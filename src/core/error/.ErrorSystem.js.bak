@@ -1,0 +1,284 @@
+/**
+ * 人狼ゲームGM支援ライブラリのエラー処理システム
+ */
+
+const { ErrorCatalog } = require('./ErrorCatalog');
+const { getTimestamp } = require('../common/Utils');
+
+/**
+ * エラー処理システムクラス
+ * エラーの検出、分類、報告、回復を担当する
+ */
+class ErrorSystem {
+  /**
+   * ErrorSystemコンストラクタ
+   * @param {Object} options - 設定オプション
+   * @param {EventSystem} eventSystem - イベントシステム
+   */
+  constructor(options = {}, eventSystem = null) {
+    // エラーポリシー設定
+    this.policy = {
+      throwLevel: options.throwLevel || 'error', // error以上でthrow
+      logLevel: options.logLevel || 'warning',   // warning以上でログ出力
+      emitAll: options.emitAll || true          // すべてのエラーをイベント発火
+    };
+    
+    // エラー履歴
+    this.errorHistory = [];
+    
+    // イベントシステム（外部から提供される）
+    this.eventSystem = eventSystem;
+    
+    // エラーレベルの重要度マップ（低いほど重要）
+    this.errorLevelPriority = {
+      'fatal': 0,    // 致命的エラー（ゲーム継続不可）
+      'error': 1,    // エラー（操作失敗）
+      'warning': 2,  // 警告（問題あるが処理続行）
+      'info': 3      // 情報（通知のみ）
+    };
+  }
+
+  /**
+   * エラーを処理する
+   * @param {string} errorCode - エラーコード
+   * @param {Object} context - エラーコンテキスト情報
+   * @param {Error} originalError - 元のエラーオブジェクト（オプション）
+   * @returns {Object} エラー情報オブジェクト
+   * @throws {Error} エラーポリシーによっては例外をスロー
+   */
+  handleError(errorCode, context = {}, originalError = null) {
+    // エラーカタログからエラー情報を取得
+    const errorInfo = ErrorCatalog[errorCode] || ErrorCatalog.INTERNAL_ERROR;
+    
+    // エラー情報を組み立て
+    const timestamp = getTimestamp();
+    const error = {
+      code: errorInfo.code || errorCode,
+      message: errorInfo.message || 'Unknown error',
+      details: errorInfo.details || '',
+      level: errorInfo.level || 'error',
+      context,
+      timestamp: new Date(timestamp).toISOString(),
+      diagnostics: this.buildDiagnostics(context, originalError)
+    };
+    
+    // エラー履歴に追加
+    this.errorHistory.push(error);
+    
+    // エラーレベルに応じた処理
+    this.processError(error);
+    
+    return error;
+  }
+
+  /**
+   * エラーレベルに応じた処理を行う
+   * @param {Object} error - エラー情報
+   * @private
+   */
+  processError(error) {
+    const { level } = error;
+    
+    // ログ出力判定
+    if (this.shouldLog(level)) {
+      this.logError(error);
+    }
+    
+    // イベント発火判定
+    if (this.policy.emitAll || this.shouldThrow(level)) {
+      this.emitErrorEvent(error);
+    }
+    
+    // 例外スロー判定
+    if (this.shouldThrow(level)) {
+      this.throwError(error);
+    }
+  }
+
+  /**
+   * 指定レベルでログ出力すべきかを判定
+   * @param {string} level - エラーレベル
+   * @returns {boolean} ログ出力すべきかどうか
+   * @private
+   */
+  shouldLog(level) {
+    return this.getErrorLevelPriority(level) <= this.getErrorLevelPriority(this.policy.logLevel);
+  }
+
+  /**
+   * 指定レベルで例外をスローすべきかを判定
+   * @param {string} level - エラーレベル
+   * @returns {boolean} 例外をスローすべきかどうか
+   * @private
+   */
+  shouldThrow(level) {
+    return this.getErrorLevelPriority(level) <= this.getErrorLevelPriority(this.policy.throwLevel);
+  }
+
+  /**
+   * エラーレベルの優先度を取得
+   * @param {string} level - エラーレベル
+   * @returns {number} 優先度（低いほど重要）
+   * @private
+   */
+  getErrorLevelPriority(level) {
+    return this.errorLevelPriority[level] !== undefined ? 
+      this.errorLevelPriority[level] : 
+      this.errorLevelPriority.info; // デフォルトは最低優先度
+  }
+
+  /**
+   * エラーをログ出力
+   * @param {Object} error - エラー情報
+   * @private
+   */
+  logError(error) {
+    const { level, code, message, context } = error;
+    
+    // レベルに応じたログメソッド
+    switch (level) {
+      case 'fatal':
+      case 'error':
+        console.error(`[${level.toUpperCase()}] ${code}: ${message}`, { context });
+        break;
+      case 'warning':
+        console.warn(`[${level.toUpperCase()}] ${code}: ${message}`, { context });
+        break;
+      case 'info':
+      default:
+        console.info(`[${level.toUpperCase()}] ${code}: ${message}`, { context });
+        break;
+    }
+  }
+
+  /**
+   * エラーイベントを発火
+   * @param {Object} error - エラー情報
+   * @private
+   */
+  emitErrorEvent(error) {
+    // イベントシステムが利用可能な場合
+    if (this.eventSystem) {
+      // レベルに応じたイベント名
+      const eventName = `error.${error.level}`;
+      this.eventSystem.emit(eventName, error);
+      
+      // 全エラー共通イベント
+      this.eventSystem.emit('error', error);
+    }
+  }
+
+  /**
+   * 例外をスロー
+   * @param {Object} error - エラー情報
+   * @throws {Error} エラー情報を含むError
+   * @private
+   */
+  throwError(error) {
+    const errorObj = new Error(`${error.code}: ${error.message}`);
+    errorObj.errorInfo = error;
+    throw errorObj;
+  }
+
+  /**
+   * 診断情報を構築
+   * @param {Object} context - コンテキスト情報
+   * @param {Error} originalError - 元のエラーオブジェクト
+   * @returns {Object} 診断情報
+   * @private
+   */
+  buildDiagnostics(context, originalError) {
+    const diagnostics = {
+      contextInfo: context
+    };
+    
+    // 元のエラー情報がある場合は追加
+    if (originalError) {
+      diagnostics.originalError = {
+        message: originalError.message,
+        stack: originalError.stack
+      };
+    }
+    
+    return diagnostics;
+  }
+
+  /**
+   * エラーポリシーを設定
+   * @param {Object} policy - エラーポリシー設定
+   * @param {string} [policy.throwLevel] - 例外をスローするレベル
+   * @param {string} [policy.logLevel] - ログ出力するレベル
+   * @param {boolean} [policy.emitAll] - すべてのエラーをイベント発火するか
+   */
+  setErrorPolicy(policy = {}) {
+    this.policy = {
+      ...this.policy,
+      ...policy
+    };
+  }
+
+  /**
+   * イベントシステムを設定
+   * @param {EventSystem} eventSystem - イベントシステム
+   */
+  setEventSystem(eventSystem) {
+    this.eventSystem = eventSystem;
+  }
+
+  /**
+   * 入力値の検証を行う
+   * @param {string} errorCode - 検証エラー時のエラーコード
+   * @param {boolean} condition - 検証条件
+   * @param {Object} context - コンテキスト情報
+   * @returns {boolean} 検証が成功したかどうか
+   * @throws {Error} 検証失敗時にエラーポリシーに従って例外をスロー
+   */
+  validateCondition(errorCode, condition, context = {}) {
+    if (!condition) {
+      this.handleError(errorCode, context);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * オペレーションの検証を行う
+   * @param {Function} operation - 検証するオペレーション関数
+   * @param {string} errorCode - エラー時のエラーコード
+   * @param {Object} context - コンテキスト情報
+   * @returns {any} オペレーションの結果
+   * @throws {Error} エラー発生時にエラーポリシーに従って例外をスロー
+   */
+  validateOperation(operation, errorCode, context = {}) {
+    try {
+      return operation();
+    } catch (error) {
+      this.handleError(errorCode, context, error);
+      return null;
+    }
+  }
+
+  /**
+   * エラー履歴を取得
+   * @param {number} limit - 取得する履歴の最大数
+   * @returns {Array} エラー履歴
+   */
+  getErrorHistory(limit = null) {
+    let history = this.errorHistory;
+    
+    if (limit && limit > 0) {
+      history = history.slice(-limit);
+    }
+    
+    return history;
+  }
+
+  /**
+   * エラー履歴をクリア
+   */
+  clearErrorHistory() {
+    this.errorHistory = [];
+  }
+}
+
+module.exports = { ErrorSystem };

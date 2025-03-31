@@ -1,0 +1,92 @@
+/**
+ * 人狼ゲームGM支援ライブラリの定数定義
+ */
+
+// フェーズ定義
+const PHASES = {
+  PREPARATION: 'preparation',
+  FIRST_NIGHT: 'firstNight',
+  FIRST_DAY: 'firstDay',
+  NIGHT: 'night',
+  DAY: 'day',
+  VOTE: 'vote',
+  RUNOFF_VOTE: 'runoffVote',
+  EXECUTION: 'execution',
+  GAME_END: 'gameEnd'
+};
+
+// アクション種別
+const ACTION_TYPES = {
+  FORTUNE: 'fortune',
+  GUARD: 'guard',
+  ATTACK: 'attack',
+  MEDIUM: 'medium',
+  SPECIAL: 'special'
+};
+
+// 陣営定義
+const TEAMS = {
+  VILLAGE: 'village',
+  WEREWOLF: 'werewolf',
+  FOX: 'fox'
+};
+
+// 役職定義
+const ROLES = {
+  VILLAGER: 'villager',
+  WEREWOLF: 'werewolf',
+  SEER: 'seer',
+  MEDIUM: 'medium',
+  KNIGHT: 'knight',
+  MADMAN: 'madman',
+  FOX: 'fox',
+  HERETIC: 'heretic',
+  MASON: 'mason'
+};
+
+// 死因定義
+const DEATH_CAUSES = {
+  EXECUTION: 'execution',
+  ATTACK: 'attack',
+  CURSE: 'curse',
+  SUICIDE: 'suicide',
+  SPECIAL: 'special'
+};
+
+// 投票ルール
+const VOTE_RULES = {
+  RUNOFF: 'runoff',
+  RANDOM: 'random',
+  NO_EXECUTION: 'no_execution',
+  ALL_EXECUTION: 'all_execution'
+};
+
+// デフォルト設定値
+const DEFAULT_OPTIONS = {
+  randomSeed: null,
+  allowSameVoteTarget: true,
+  executionRule: VOTE_RULES.RUNOFF,
+  runoffTieRule: VOTE_RULES.RANDOM,
+  regulations: {
+    allowConsecutiveGuard: false,
+    allowRoleMissing: false,
+    firstDayExecution: false,
+    firstNightFortune: 'random_white',
+    revealRoleOnDeath: true
+  },
+  visibilityControl: {
+    enabled: false,
+    strictMode: false
+  }
+};
+
+// エクスポート
+module.exports = {
+  PHASES,
+  ACTION_TYPES,
+  TEAMS,
+  ROLES,
+  DEATH_CAUSES,
+  VOTE_RULES,
+  DEFAULT_OPTIONS
+};

@@ -1,0 +1,119 @@
+/**
+ * 人狼ゲームGM支援ライブラリのユーティリティ関数
+ */
+
+/**
+ * 配列をシャッフルする
+ * @param {Array} array - シャッフルする配列
+ * @param {number|null} seed - 乱数シード（再現性のため）
+ * @returns {Array} シャッフルされた新しい配列
+ */
+function shuffle(array, seed = null) {
+  const newArray = [...array];
+  let currentIndex = newArray.length;
+  let randomIndex;
+
+  // シード値が指定されていれば、シード値を使った乱数生成
+  const random = seed !== null
+    ? createSeededRandom(seed)
+    : Math.random;
+
+  // Fisher-Yatesアルゴリズムでシャッフル
+  while (currentIndex > 0) {
+    randomIndex = Math.floor(random() * currentIndex);
+    currentIndex--;
+
+    // 要素の入れ替え
+    [newArray[currentIndex], newArray[randomIndex]] = 
+    [newArray[randomIndex], newArray[currentIndex]];
+  }
+
+  return newArray;
+}
+
+/**
+ * シード値に基づく疑似乱数生成関数を作成
+ * @param {number} seed - 乱数シード
+ * @returns {Function} 0〜1の範囲で乱数を返す関数
+ */
+function createSeededRandom(seed) {
+  let s = seed;
+  
+  return function() {
+    s = Math.sin(s) * 10000;
+    return s - Math.floor(s);
+  };
+}
+
+/**
+ * プロパティの一部を更新したオブジェクトを返す
+ * @param {Object} obj - 元のオブジェクト
+ * @param {Object} updates - 更新するプロパティ
+ * @returns {Object} 更新された新しいオブジェクト
+ */
+function updateObject(obj, updates) {
+  return { ...obj, ...updates };
+}
+
+/**
+ * 配列内の要素をグループ化する
+ * @param {Array} array - グループ化する配列
+ * @param {Function} keyFn - グループキーを取得する関数
+ * @returns {Object} グループ化された結果
+ */
+function groupBy(array, keyFn) {
+  return array.reduce((result, item) => {
+    const key = keyFn(item);
+    if (!result[key]) {
+      result[key] = [];
+    }
+    result[key].push(item);
+    return result;
+  }, {});
+}
+
+/**
+ * 配列から重複を取り除く
+ * @param {Array} array - 対象の配列
+ * @returns {Array} 重複を取り除いた新しい配列
+ */
+function unique(array) {
+  return [...new Set(array)];
+}
+
+/**
+ * 現在のタイムスタンプを取得
+ * @returns {number} ミリ秒単位のタイムスタンプ
+ */
+function getTimestamp() {
+  return Date.now();
+}
+
+/**
+ * 指定されたミリ秒だけ待機する Promise を返す
+ * @param {number} ms - 待機ミリ秒
+ * @returns {Promise} 指定時間後に解決するPromise
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * オブジェクトの深いコピーを作成
+ * @param {Object} obj - コピー元オブジェクト
+ * @returns {Object} 深くコピーされた新しいオブジェクト
+ */
+function deepCopy(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+module.exports = {
+  shuffle,
+  createSeededRandom,
+  updateObject,
+  groupBy,
+  unique,
+  getTimestamp,
+  sleep,
+  deepCopy
+};

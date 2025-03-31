@@ -1,0 +1,228 @@
+/**
+ * 人狼ゲームGM支援ライブラリのイベントシステム
+ * イベントの登録、発行、管理を担当する
+ */
+
+const { getTimestamp } = require('../common/Utils');
+
+/**
+ * イベントシステムクラス
+ * イベント駆動型アーキテクチャの中心となるコンポーネント
+ */
+class EventSystem {
+  /**
+   * EventSystemコンストラクタ
+   */
+  constructor() {
+    // イベントリスナーマップ
+    this.listeners = new Map();
+    
+    // 一度だけ実行されるリスナーマップ
+    this.onceListeners = new Map();
+    
+    // イベント履歴
+    this.eventHistory = [];
+    
+    // 履歴記録の最大サイズ（0は無制限）
+    this.maxHistorySize = 1000;
+    
+    // 記録するイベントの種類（nullは全て記録）
+    this.recordedEventTypes = null;
+  }
+
+  /**
+   * イベントリスナーを登録する
+   * @param {string} eventName - イベント名
+   * @param {Function} callback - コールバック関数
+   * @returns {EventSystem} メソッドチェーン用にthisを返す
+   */
+  on(eventName, callback) {
+    if (!this.listeners.has(eventName)) {
+      this.listeners.set(eventName, []);
+    }
+    
+    this.listeners.get(eventName).push(callback);
+    return this;
+  }
+
+  /**
+   * 一度だけ実行されるイベントリスナーを登録する
+   * @param {string} eventName - イベント名
+   * @param {Function} callback - コールバック関数
+   * @returns {EventSystem} メソッドチェーン用にthisを返す
+   */
+  once(eventName, callback) {
+    if (!this.onceListeners.has(eventName)) {
+      this.onceListeners.set(eventName, []);
+    }
+    
+    this.onceListeners.get(eventName).push(callback);
+    return this;
+  }
+
+  /**
+   * イベントリスナーを削除する
+   * @param {string} eventName - イベント名
+   * @param {Function} callback - 削除するコールバック関数
+   * @returns {boolean} 削除に成功したかどうか
+   */
+  removeListener(eventName, callback) {
+    // 通常リスナーから削除
+    if (this.listeners.has(eventName)) {
+      const listeners = this.listeners.get(eventName);
+      const index = listeners.indexOf(callback);
+      
+      if (index !== -1) {
+        listeners.splice(index, 1);
+        return true;
+      }
+    }
+    
+    // onceリスナーから削除
+    if (this.onceListeners.has(eventName)) {
+      const listeners = this.onceListeners.get(eventName);
+      const index = listeners.indexOf(callback);
+      
+      if (index !== -1) {
+        listeners.splice(index, 1);
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * イベントを発行する
+   * @param {string} eventName - イベント名
+   * @param {Object} data - イベントデータ
+   * @returns {boolean} イベント処理が成功したかどうか
+   */
+  emit(eventName, data = {}) {
+    let handled = false;
+    
+    // イベント実行前に履歴に追加
+    this.recordEvent(eventName, data);
+    
+    // 通常リスナーの実行
+    if (this.listeners.has(eventName)) {
+      const listeners = this.listeners.get(eventName);
+      for (const callback of listeners) {
+        try {
+          callback(data);
+          handled = true;
+        } catch (error) {
+          console.error(`イベントリスナーでエラーが発生しました: ${eventName}`, error);
+        }
+      }
+    }
+    
+    // onceリスナーの実行
+    if (this.onceListeners.has(eventName)) {
+      const listeners = this.onceListeners.get(eventName);
+      // リスナー配列のコピーを作成（実行中にリスナーが削除される可能性があるため）
+      const listenersToCall = [...listeners];
+      
+      // onceリスナーをクリア
+      this.onceListeners.set(eventName, []);
+      
+      for (const callback of listenersToCall) {
+        try {
+          callback(data);
+          handled = true;
+        } catch (error) {
+          console.error(`onceイベントリスナーでエラーが発生しました: ${eventName}`, error);
+        }
+      }
+    }
+    
+    return handled;
+  }
+
+  /**
+   * イベントを履歴に記録する
+   * @param {string} eventName - イベント名
+   * @param {Object} data - イベントデータ
+   * @private
+   */
+  recordEvent(eventName, data) {
+    // 記録対象のイベントタイプかどうかチェック
+    if (this.recordedEventTypes && !this.recordedEventTypes.includes(eventName)) {
+      return;
+    }
+    
+    const eventRecord = {
+      type: eventName,
+      data,
+      timestamp: getTimestamp()
+    };
+    
+    this.eventHistory.push(eventRecord);
+    
+    // 履歴サイズの制限
+    if (this.maxHistorySize > 0 && this.eventHistory.length > this.maxHistorySize) {
+      this.eventHistory.shift(); // 最も古いイベントを削除
+    }
+  }
+
+  /**
+   * 指定したタイプのイベント履歴を取得する
+   * @param {string|null} eventType - イベントタイプ（nullの場合は全履歴）
+   * @param {number|null} limit - 取得数制限
+   * @returns {Array} イベント履歴
+   */
+  getEventHistory(eventType = null, limit = null) {
+    let filteredHistory = this.eventHistory;
+    
+    // イベントタイプでフィルタリング
+    if (eventType) {
+      filteredHistory = filteredHistory.filter(event => event.type === eventType);
+    }
+    
+    // 件数制限の適用
+    if (limit && limit > 0) {
+      filteredHistory = filteredHistory.slice(-limit);
+    }
+    
+    return filteredHistory;
+  }
+
+  /**
+   * イベント履歴の設定を変更する
+   * @param {Object} options - 設定オプション
+   * @param {number} [options.maxHistorySize] - 履歴の最大サイズ
+   * @param {Array<string>} [options.recordedEventTypes] - 記録するイベントタイプのリスト
+   */
+  configureEventHistory(options = {}) {
+    if (options.maxHistorySize !== undefined) {
+      this.maxHistorySize = options.maxHistorySize;
+    }
+    
+    if (options.recordedEventTypes !== undefined) {
+      this.recordedEventTypes = options.recordedEventTypes;
+    }
+  }
+
+  /**
+   * イベント履歴をクリアする
+   */
+  clearEventHistory() {
+    this.eventHistory = [];
+  }
+
+  /**
+   * すべてのイベントリスナーを削除する
+   * @param {string|null} eventName - イベント名（nullの場合はすべて）
+   */
+  removeAllListeners(eventName = null) {
+    if (eventName) {
+      this.listeners.delete(eventName);
+      this.onceListeners.delete(eventName);
+    } else {
+      this.listeners.clear();
+      this.onceListeners.clear();
+    }
+  }
+}
+
+module.exports = { EventSystem };

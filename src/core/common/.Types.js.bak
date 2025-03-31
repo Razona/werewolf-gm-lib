@@ -1,0 +1,97 @@
+/**
+ * 人狼ゲームGM支援ライブラリの共通型定義
+ * JavaScript のコメントでTypeScriptの型定義に似た記法で記述
+ */
+
+/**
+ * @typedef {Object} GameOptions
+ * @property {number|null} randomSeed - 乱数シード（再現性のため）
+ * @property {boolean} allowSameVoteTarget - 同じ対象への複数票を許可
+ * @property {string} executionRule - 同数の場合の処理ルール
+ * @property {string} runoffTieRule - 決選投票でも同数の場合のルール
+ * @property {Object} regulations - レギュレーション設定
+ * @property {boolean} regulations.allowConsecutiveGuard - 連続ガード許可
+ * @property {boolean} regulations.allowRoleMissing - 役職欠け許可
+ * @property {boolean} regulations.firstDayExecution - 初日処刑実施
+ * @property {string} regulations.firstNightFortune - 初日占いルール
+ * @property {boolean} regulations.revealRoleOnDeath - 死亡時役職公開
+ * @property {Object} visibilityControl - 情報可視性制御設定
+ * @property {boolean} visibilityControl.enabled - 情報可視性制御の有効化
+ * @property {boolean} visibilityControl.strictMode - 厳格モード
+ */
+
+/**
+ * @typedef {Object} Player
+ * @property {number} id - プレイヤーID
+ * @property {string} name - プレイヤー名
+ * @property {string|null} role - 役職名
+ * @property {boolean} isAlive - 生存状態
+ * @property {string|null} causeOfDeath - 死因
+ * @property {number|null} deathTurn - 死亡したターン
+ * @property {Array<string>} immunity - 免疫効果リスト
+ * @property {Array<Object>} statusEffects - 状態効果リスト
+ */
+
+/**
+ * @typedef {Object} Action
+ * @property {string} id - アクションID
+ * @property {string} type - アクション種別
+ * @property {number} actor - 実行者ID
+ * @property {number} target - 対象ID
+ * @property {number} night - 実行ターン（夜）
+ * @property {number} priority - 実行優先度
+ * @property {boolean} executed - 実行済みフラグ
+ * @property {Object|null} result - 実行結果
+ * @property {boolean} cancelled - キャンセルフラグ
+ */
+
+/**
+ * @typedef {Object} Vote
+ * @property {number} voterId - 投票者ID
+ * @property {number} targetId - 投票先プレイヤーID
+ * @property {string} voteType - 投票タイプ
+ * @property {number} voteStrength - 投票の重み
+ * @property {number} turn - ターン数
+ * @property {number} timestamp - 投票時刻
+ */
+
+/**
+ * @typedef {Object} VoteResult
+ * @property {string} type - 投票タイプ
+ * @property {number} turn - ターン数
+ * @property {Array<Vote>} votes - 投票リスト
+ * @property {Object} counts - プレイヤーごとの得票数
+ * @property {Array<number>} maxVoted - 最大得票者IDリスト
+ * @property {boolean} isTie - 同票かどうか
+ * @property {boolean} needsRunoff - 決選投票が必要か
+ */
+
+/**
+ * @typedef {Object} GameState
+ * @property {string} id - ゲームID
+ * @property {string} phase - 現在のフェーズ
+ * @property {number} turn - ターン数
+ * @property {Array<Player>} players - プレイヤーリスト
+ * @property {Object} roles - 役職構成
+ * @property {Array<Vote>} votes - 投票履歴
+ * @property {Array<Action>} actions - アクション履歴
+ * @property {Object} regulation - レギュレーション設定
+ * @property {Array} history - イベント履歴
+ * @property {string|null} winner - 勝者（ゲーム終了時）
+ * @property {number} timestamp - 最終更新時刻
+ */
+
+/**
+ * @typedef {Object} ErrorData
+ * @property {string} code - エラーコード
+ * @property {string} message - エラーメッセージ
+ * @property {string} details - 詳細説明
+ * @property {Object} context - コンテキスト情報
+ * @property {string} level - エラーレベル
+ * @property {string} timestamp - 発生時刻
+ * @property {Object} diagnostics - 診断情報
+ */
+
+// 実際にこのファイルからエクスポートする値はないが、
+// JSDocによる型定義のためのファイルとして利用する
+module.exports = {};
