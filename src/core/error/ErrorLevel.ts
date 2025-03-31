@@ -22,3 +22,13 @@ export enum ErrorLevel {
    */
   INFO = 'INFO'
 }
+
+// アクセスを試みるとエラーが発生することを確認
+try {
+  ErrorLevel.TEST = 'test';
+  console.error('Object.freeze is not working properly!');
+} catch (e) {
+  // 正しく凍結されている
+}
+
+module.exports = ErrorLevel;
