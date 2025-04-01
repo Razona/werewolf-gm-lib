@@ -1,0 +1,217 @@
+/**
+ * 入力検証を行うクラス
+ * 各種検証メソッドを提供し、条件に合わない場合はエラーハンドラーを介してエラーを通知する
+ */
+export class Validator {
+  private errorHandler: any;
+  private customValidators: Map<string, Function>;
+
+  /**
+   * バリデータを初期化する
+   * @param errorHandler エラーハンドラー（オプション）
+   */
+  constructor(errorHandler: any = null) {
+    this.errorHandler = errorHandler;
+    this.customValidators = new Map<string, Function>();
+  }
+
+  /**
+   * 値が存在するか（null/undefinedでないか）検証する
+   * @param value 検証する値
+   * @param errorCodeOrOptions エラーコードまたはオプションオブジェクト
+   * @param message エラー時のカスタムメッセージ
+   * @param context エラー時に含める追加コンテキスト
+   * @returns 検証結果（true: 成功, false: 失敗）
+   */
+  validateExists(
+    value: any, 
+    errorCodeOrOptions?: string | { errorCode?: string; message?: string; context?: Record<string, any> },
+    message?: string,
+    context?: Record<string, any>
+  ): boolean {
+    // 引数の標準化
+    const options = this.normalizeArgs(errorCodeOrOptions, message, context);
+    
+    const condition = value !== null && value !== undefined;
+    
+    if (!condition && options.errorCode) {
+      this.raiseError(options.errorCode, options.message || '値が存在しません', {
+        expectedType: 'non-null',
+        actualValue: value,
+        ...(options.context || {})
+      });
+    }
+    
+    return condition;
+  }
+
+  /**
+   * 条件式を検証する
+   * @param condition 検証する条件式（true/false）
+   * @param errorCodeOrOptions エラーコードまたはオプションオブジェクト
+   * @param message エラー時のカスタムメッセージ
+   * @param context エラー時に含める追加コンテキスト
+   * @returns 検証結果（true: 成功, false: 失敗）
+   */
+  validateCondition(
+    condition: boolean, 
+    errorCodeOrOptions?: string | { errorCode?: string; message?: string; context?: Record<string, any> },
+    message?: string,
+    context?: Record<string, any>
+  ): boolean {
+    // 引数の標準化
+    const options = this.normalizeArgs(errorCodeOrOptions, message, context);
+    
+    if (!condition && options.errorCode) {
+      this.raiseError(options.errorCode, options.message || '条件を満たしていません', options.context || {});
+    }
+    
+    return condition;
+  }
+
+  /**
+   * 値の型を検証する
+   * @param value 検証する値
+   * @param type 期待される型
+   * @param errorCodeOrOptions エラーコードまたはオプションオブジェクト
+   * @param message エラー時のカスタムメッセージ
+   * @param context エラー時に含める追加コンテキスト
+   * @returns 検証結果（true: 成功, false: 失敗）
+   */
+  validateType(
+    value: any, 
+    type: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'function' | 'null' | 'undefined' | 'integer' | 'positive' | 'nonnegative',
+    errorCodeOrOptions?: string | { errorCode?: string; message?: string; context?: Record<string, any> },
+    message?: string,
+    context?: Record<string, any>
+  ): boolean {
+    // 引数の標準化
+    const options = this.normalizeArgs(errorCodeOrOptions, message, context);
+    
+    let condition = false;
+    
+    switch (type) {
+      case 'string':
+        condition = typeof value === 'string';
+        break;
+      case 'number':
+        condition = typeof value === 'number' && !isNaN(value);
+        break;
+      case 'boolean':
+        condition = typeof value === 'boolean';
+        break;
+      case 'object':
+        condition = typeof value === 'object' && value !== null && !Array.isArray(value);
+        break;
+      case 'array':
+        condition = Array.isArray(value);
+        break;
+      case 'function':
+        condition = typeof value === 'function';
+        break;
+      case 'null':
+        condition = value === null;
+        break;
+      case 'undefined':
+        condition = value === undefined;
+        break;
+      case 'integer':
+        condition = Number.isInteger(value);
+        break;
+      case 'positive':
+        condition = typeof value === 'number' && value > 0 && !isNaN(value);
+        break;
+      case 'nonnegative':
+        condition = typeof value === 'number' && value >= 0 && !isNaN(value);
+        break;
+      default:
+        condition = false;
+    }
+    
+    if (!condition && options.errorCode) {
+      this.raiseError(options.errorCode, options.message || `型が一致しません: ${type}`, {
+        expectedType: type,
+        actualType: Array.isArray(value) ? 'array' : typeof value,
+        value,
+        ...(options.context || {})
+      });
+    }
+    
+    return condition;
+  }
+
+  /**
+   * カスタムバリデータを登録する
+   * @param name バリデータ名
+   * @param validator バリデータ関数
+   */
+  registerCustomValidator(name: string, validator: Function): void {
+    this.customValidators.set(name, validator);
+  }
+
+  /**
+   * カスタムバリデータを実行する
+   * @param name バリデータ名
+   * @param value 検証する値
+   * @param context 追加コンテキスト
+   * @returns 検証結果（true: 成功, false: 失敗）
+   */
+  executeCustomValidator(name: string, value: any, context?: Record<string, any>): boolean {
+    const validator = this.customValidators.get(name);
+    
+    if (!validator) {
+      throw new Error(`Custom validator ${name} not found`);
+    }
+    
+    return validator(value, context);
+  }
+
+  /**
+   * 引数をオプションオブジェクトに標準化
+   * @param errorCodeOrOptions エラーコードまたはオプションオブジェクト
+   * @param message メッセージ
+   * @param context コンテキスト
+   * @returns 標準化されたオプション
+   * @private
+   */
+  private normalizeArgs(
+    errorCodeOrOptions?: string | { errorCode?: string; message?: string; context?: Record<string, any> },
+    message?: string,
+    context?: Record<string, any>
+  ): { errorCode?: string; message?: string; context?: Record<string, any> } {
+    // 最初の引数がオブジェクトの場合はオプションとして扱う
+    if (errorCodeOrOptions && typeof errorCodeOrOptions === 'object') {
+      return {
+        errorCode: errorCodeOrOptions.errorCode || 'VALIDATION.ERROR',
+        message: errorCodeOrOptions.message,
+        context: errorCodeOrOptions.context || {}
+      };
+    }
+    
+    // それ以外は個別の引数として扱う
+    return {
+      errorCode: errorCodeOrOptions as string,
+      message,
+      context
+    };
+  }
+
+  /**
+   * エラーハンドラーを通じてエラーを発生させる
+   * @param errorCode エラーコード
+   * @param message カスタムメッセージ
+   * @param context 追加コンテキスト
+   * @private
+   */
+  private raiseError(errorCode: string, message?: string, context?: Record<string, any>): void {
+    if (this.errorHandler) {
+      const error = this.errorHandler.register ?
+        this.errorHandler.register(errorCode, context, message) :
+        this.errorHandler.createError(errorCode, message, context);
+      
+      if (this.errorHandler.handleError) {
+        this.errorHandler.handleError(error);
+      }
+    }
+  }
+}

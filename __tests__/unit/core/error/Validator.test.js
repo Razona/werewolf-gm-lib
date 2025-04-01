@@ -1,174 +1,289 @@
-const { Validator } = require('../../../../src/core/error/Validator');
+import Validator from '../../../../src/core/error/Validator';
 
 class MockErrorHandler {
   constructor() {
     this.handledErrors = [];
   }
 
-  handle(error) {
+  handleError(error) {
     this.handledErrors.push(error);
+    return error;
   }
 }
 
 describe('Validator', () => {
   let errorHandler;
   let validator;
+  let validatorWithoutHandler;
 
   beforeEach(() => {
     errorHandler = new MockErrorHandler();
     validator = new Validator(errorHandler);
+    validatorWithoutHandler = new Validator();
   });
 
   describe('Initialization', () => {
     test('should create new validator instance', () => {
       expect(validator).toBeTruthy();
+      expect(validator.errorHandler).toBe(errorHandler);
     });
 
     test('should work without error handler', () => {
-      const validatorWithoutHandler = new Validator();
       expect(validatorWithoutHandler).toBeTruthy();
+      expect(validatorWithoutHandler.errorHandler).toBeNull();
     });
   });
 
   describe('Basic Validations', () => {
     describe('validateExists', () => {
-      const testCases = [
-        { value: 'test', expected: true },
-        { value: 0, expected: true },
-        { value: false, expected: true },
-        { value: {}, expected: true },
-        { value: [], expected: true },
-        { value: '', expected: true },
-        { value: NaN, expected: true },
-        { value: null, expected: false },
-        { value: undefined, expected: false }
-      ];
-
-      testCases.forEach(({ value, expected }) => {
-        test(`should ${expected ? 'pass' : 'fail'} for non-null/undefined value: ${value}`, () => {
-          const result = validator.validateExists(value, { 
-            message: 'Custom error message',
-            context: { testValue: value }
-          });
-          expect(result).toBe(expected);
-        });
+      // エラーハンドラーがある場合のテスト
+      test.each([
+        'test',
+        0,
+        false,
+        {},
+        [],
+        () => {},
+        NaN
+      ])('should pass for non-null/undefined value with handler: %p', (value) => {
+        const result = validator.validateExists(value);
+        expect(result).toBe(true);
+        expect(errorHandler.handledErrors.length).toBe(0);
       });
 
-      test('should include custom error message', () => {
-        validator.validateExists(null, { message: 'Custom not null message' });
-        expect(errorHandler.handledErrors[0].message).toBe('Custom not null message');
+      test.each([
+        null,
+        undefined
+      ])('should fail for null/undefined value with handler: %p', (value) => {
+        const result = validator.validateExists(value);
+        expect(result).toBe(false);
+        expect(errorHandler.handledErrors.length).toBe(1);
+        expect(errorHandler.handledErrors[0].code).toBe('E0101');
       });
 
-      test('should include context in error', () => {
-        const context = { playerId: 1 };
+      // エラーハンドラーがない場合のテスト
+      test.each([
+        'test',
+        0,
+        false,
+        {},
+        [],
+        () => {},
+        NaN
+      ])('should pass for non-null/undefined value without handler: %p', (value) => {
+        expect(() => validatorWithoutHandler.validateExists(value)).not.toThrow();
+      });
+
+      test.each([
+        null,
+        undefined
+      ])('should throw for null/undefined value without handler: %p', (value) => {
+        expect(() => validatorWithoutHandler.validateExists(value)).toThrow('値が存在しません');
+      });
+
+      // カスタムメッセージのテスト
+      test('should include custom error message with handler', () => {
+        const customMessage = 'カスタムエラーメッセージ';
+        validator.validateExists(null, { message: customMessage });
+        expect(errorHandler.handledErrors[0].message).toBe(customMessage);
+      });
+
+      test('should include custom error message without handler', () => {
+        const customMessage = 'カスタムエラーメッセージ';
+        expect(() => validatorWithoutHandler.validateExists(null, { message: customMessage })).toThrow(customMessage);
+      });
+
+      // コンテキスト情報のテスト
+      test('should include context in error with handler', () => {
+        const context = { testId: 123 };
         validator.validateExists(null, { context });
         expect(errorHandler.handledErrors[0].context).toEqual(context);
       });
     });
 
     describe('validateCondition', () => {
-      const testCases = [
-        { condition: true, expected: true },
-        { condition: 1 === 1, expected: true },
-        { condition: false, expected: false },
-        { condition: 1 === 2, expected: false }
-      ];
-
-      testCases.forEach(({ condition, expected }) => {
-        test(`should ${expected ? 'pass' : 'fail'} for condition: ${condition}`, () => {
-          const result = validator.validateCondition(condition, {
-            message: 'Custom condition message',
-            context: { condition }
-          });
-          expect(result).toBe(expected);
-        });
-      });
-
-      test('should include custom error message and context', () => {
-        const context = { playerId: 1 };
-        validator.validateCondition(false, { 
-          message: 'Custom condition failed', 
-          context 
-        });
-        const error = errorHandler.handledErrors[0];
-        expect(error.message).toBe('Custom condition failed');
-        expect(error.context).toEqual(context);
-      });
-
-      test('should handle complex conditions', () => {
-        const complexCondition = () => {
-          const arr = [1, 2, 3];
-          return arr.length > 2;
-        };
-        const result = validator.validateCondition(complexCondition());
+      // エラーハンドラーがある場合のテスト
+      test.each([
+        true,
+        1 === 1,
+        'test' === 'test'
+      ])('should pass for true condition with handler: %p', (condition) => {
+        const result = validator.validateCondition(condition);
         expect(result).toBe(true);
+        expect(errorHandler.handledErrors.length).toBe(0);
+      });
+
+      test.each([
+        false,
+        1 === 2,
+        'test' === 'other'
+      ])('should fail for false condition with handler: %p', (condition) => {
+        const result = validator.validateCondition(condition);
+        expect(result).toBe(false);
+        expect(errorHandler.handledErrors.length).toBe(1);
+        expect(errorHandler.handledErrors[0].code).toBe('E0901');
+      });
+
+      // エラーハンドラーがない場合のテスト
+      test.each([
+        true,
+        1 === 1,
+        'test' === 'test'
+      ])('should pass for true condition without handler: %p', (condition) => {
+        expect(() => validatorWithoutHandler.validateCondition(condition)).not.toThrow();
+      });
+
+      test.each([
+        false,
+        1 === 2,
+        'test' === 'other'
+      ])('should throw for false condition without handler: %p', (condition) => {
+        expect(() => validatorWithoutHandler.validateCondition(condition)).toThrow('条件を満たしていません');
+      });
+
+      // カスタムメッセージとコンテキストのテスト
+      test('should include custom error message and context with handler', () => {
+        const customMessage = 'カスタムメッセージ';
+        const context = { testId: 123 };
+        validator.validateCondition(false, { message: customMessage, context });
+        expect(errorHandler.handledErrors[0].message).toBe(customMessage);
+        expect(errorHandler.handledErrors[0].context).toEqual(context);
       });
     });
   });
 
   describe('Type Validation', () => {
-    const typeTestCases = [
-      { value: 'test', type: 'string', expected: true },
-      { value: 42, type: 'number', expected: true },
-      { value: true, type: 'boolean', expected: true },
-      { value: {}, type: 'object', expected: true },
-      { value: [], type: 'array', expected: true },
-      { value: () => {}, type: 'function', expected: true },
-      { value: null, type: 'null', expected: true },
-      { value: undefined, type: 'undefined', expected: true },
-      { value: 10, type: 'integer', expected: true },
-      { value: 10, type: 'positive', expected: true },
-      { value: 0, type: 'nonnegative', expected: true },
-      
-      { value: 'test', type: 'number', expected: false },
-      { value: 42, type: 'string', expected: false },
-      { value: true, type: 'object', expected: false },
-      { value: {}, type: 'array', expected: false },
-      { value: [], type: 'function', expected: false },
-      { value: 'test', type: 'null', expected: false },
-      { value: 'test', type: 'undefined', expected: false },
-      { value: 3.14, type: 'integer', expected: false },
-      { value: -10, type: 'positive', expected: false },
-      { value: -1, type: 'nonnegative', expected: false },
-      { value: NaN, type: 'number', expected: false }
+    const validTypeTestCases = [
+      ['test', 'string'],
+      [42, 'number'],
+      [true, 'boolean'],
+      [{}, 'object'],
+      [[], 'array'],
+      [() => {}, 'function'],
+      [null, 'null'],
+      [undefined, 'undefined'],
+      [10, 'integer'],
+      [5, 'positive'],
+      [0, 'nonnegative']
     ];
 
-    typeTestCases.forEach(({ value, type, expected }) => {
-      test(`should ${expected ? 'pass' : 'fail'} for ${value} with ${type} type`, () => {
-        const result = validator.validateType(value, type, {
-          message: 'Type validation failed',
-          context: { value, type }
-        });
-        expect(result).toBe(expected);
-      });
+    const invalidTypeTestCases = [
+      ['test', 'number'],
+      [42, 'string'],
+      [true, 'object'],
+      [{}, 'array'],
+      [[], 'function'],
+      ['test', 'null'],
+      ['test', 'undefined'],
+      [3.14, 'integer'],
+      [-10, 'positive'],
+      [-1, 'nonnegative'],
+      [NaN, 'number']
+    ];
+
+    // エラーハンドラーがある場合の有効な型テスト
+    test.each(validTypeTestCases)('should pass for %p with %s type with handler', (value, type) => {
+      const result = validator.validateType(value, type);
+      expect(result).toBe(true);
+      expect(errorHandler.handledErrors.length).toBe(0);
+    });
+
+    // エラーハンドラーがある場合の無効な型テスト
+    test.each(invalidTypeTestCases)('should fail for %p with %s type with handler', (value, type) => {
+      const result = validator.validateType(value, type);
+      expect(result).toBe(false);
+      expect(errorHandler.handledErrors.length).toBe(1);
+      expect(errorHandler.handledErrors[0].code).toBe('E0904');
+    });
+
+    // エラーハンドラーがない場合の有効な型テスト
+    test.each(validTypeTestCases)('should pass for %p with %s type without handler', (value, type) => {
+      expect(() => validatorWithoutHandler.validateType(value, type)).not.toThrow();
+    });
+
+    // エラーハンドラーがない場合の無効な型テスト
+    test.each(invalidTypeTestCases)('should throw for %p with %s type without handler', (value, type) => {
+      expect(() => validatorWithoutHandler.validateType(value, type)).toThrow();
     });
   });
 
   describe('Custom Validators', () => {
     test('should register a custom validator', () => {
-      const customValidator = (value) => value > 10;
-      validator.registerCustomValidator('greaterThanTen', customValidator);
-      expect(() => validator.executeCustomValidator('greaterThanTen', 15)).not.toThrow();
+      const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      const result = validator.registerCustomValidator('isEmail', isEmail);
+      expect(result).toBe(true);
+      expect(validator.customValidators.get('isEmail')).toBe(isEmail);
     });
 
-    test('should execute a custom validator', () => {
-      const customValidator = (value) => value > 10;
-      validator.registerCustomValidator('greaterThanTen', customValidator);
-      const result = validator.executeCustomValidator('greaterThanTen', 15);
+    test('should execute a valid custom validator with handler', () => {
+      const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      validator.registerCustomValidator('isEmail', isEmail);
+      
+      const result = validator.executeCustomValidator('isEmail', 'test@example.com');
       expect(result).toBe(true);
+      expect(errorHandler.handledErrors.length).toBe(0);
+    });
+
+    test('should execute an invalid custom validator with handler', () => {
+      const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      validator.registerCustomValidator('isEmail', isEmail);
+      
+      const result = validator.executeCustomValidator('isEmail', 'invalid-email');
+      expect(result).toBe(false);
+      expect(errorHandler.handledErrors.length).toBe(1);
+      expect(errorHandler.handledErrors[0].code).toBe('E0905');
+    });
+
+    test('should execute a valid custom validator without handler', () => {
+      const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      validatorWithoutHandler.registerCustomValidator('isEmail', isEmail);
+      
+      expect(() => validatorWithoutHandler.executeCustomValidator('isEmail', 'test@example.com')).not.toThrow();
+    });
+
+    test('should throw for an invalid custom validator without handler', () => {
+      const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      validatorWithoutHandler.registerCustomValidator('isEmail', isEmail);
+      
+      expect(() => validatorWithoutHandler.executeCustomValidator('isEmail', 'invalid-email')).toThrow();
     });
 
     test('should handle unregistered validator', () => {
-      expect(() => validator.executeCustomValidator('nonexistent', 10))
+      expect(() => validator.executeCustomValidator('nonexistent', 'test'))
         .toThrow('Custom validator nonexistent not found');
     });
 
-    test('should register a complex validator with context', () => {
-      const complexValidator = (value, context) => {
-        return value > context.threshold;
+    test('should register and execute a complex validator with context', () => {
+      const inRange = (value, context) => {
+        const { min, max } = context;
+        return value >= min && value <= max;
       };
-      validator.registerCustomValidator('complexValidation', complexValidator);
-      const result = validator.executeCustomValidator('complexValidation', 15, { threshold: 10 });
+      
+      validator.registerCustomValidator('inRange', inRange);
+      
+      const validResult = validator.executeCustomValidator('inRange', 5, { min: 1, max: 10 });
+      expect(validResult).toBe(true);
+      
+      const invalidResult = validator.executeCustomValidator('inRange', 15, { min: 1, max: 10 });
+      expect(invalidResult).toBe(false);
+      expect(errorHandler.handledErrors.length).toBe(1);
+    });
+  });
+
+  describe('Player and Role Action Validation', () => {
+    test('should validate player action with valid player', () => {
+      const player = { id: 1, isAlive: true };
+      const action = { type: 'test' };
+      
+      const result = validator.validatePlayerAction(action, player);
+      expect(result).toBe(true);
+    });
+    
+    test('should validate role action with valid role', () => {
+      const role = { id: 'villager' };
+      const action = { type: 'test' };
+      
+      const result = validator.validateRoleAction(action, role);
       expect(result).toBe(true);
     });
   });

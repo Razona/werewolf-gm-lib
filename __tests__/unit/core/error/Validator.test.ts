@@ -1,11 +1,18 @@
-import { Validator, ErrorHandler } from '../../../../src/core/error';
+import { ErrorHandler } from '../../../../src/core/error/ErrorHandler';
+import { Validator } from '../../../../src/core/error/Validator';
 
-class MockErrorHandler extends ErrorHandler {
+class MockErrorHandler {
   handledErrors: any[] = [];
 
-  handle(error: any): void {
+  register(errorCode: string, context: any = {}, message?: string): any {
+    const error = { errorCode, context, message };
     this.handledErrors.push(error);
-    super.handle(error);
+    return error;
+  }
+
+  handleError(error: any): any {
+    // すでにregisterで追加されているので何もしない
+    return error;
   }
 }
 
@@ -15,10 +22,9 @@ describe('Validator', () => {
 
   beforeEach(() => {
     errorHandler = new MockErrorHandler();
-    validator = new Validator(errorHandler);
+    validator = new Validator(errorHandler as any);
   });
 
-  // 以前のテストコードをそのまま使用（前回のコードと同じ）
   describe('Initialization', () => {
     test('should create new validator instance', () => {
       expect(validator).toBeTruthy();
@@ -29,6 +35,4 @@ describe('Validator', () => {
       expect(validatorWithoutHandler).toBeTruthy();
     });
   });
-
-  // 残りのテストコードは以前のものと同じ
 });

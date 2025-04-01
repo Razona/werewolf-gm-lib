@@ -1,0 +1,61 @@
+import { ErrorLevel } from './ErrorLevel';
+
+export interface ErrorEntry {
+  code: string;
+  message: string;
+  level: ErrorLevel;
+  details: string;
+}
+
+export interface ErrorCatalogCategory {
+  [key: string]: ErrorEntry;
+}
+
+export interface ErrorCatalog {
+  SYSTEM: ErrorCatalogCategory;
+  PLAYER: ErrorCatalogCategory;
+  ROLE: ErrorCatalogCategory;
+  ACTION: ErrorCatalogCategory;
+  VOTE: ErrorCatalogCategory;
+  PHASE: ErrorCatalogCategory;
+  WARNING: ErrorCatalogCategory;
+  INFO: ErrorCatalogCategory;
+}
+
+function isErrorEntry(error: unknown): error is ErrorEntry {
+  return (
+    typeof error === 'object' && 
+    error !== null && 
+    'code' in error && 
+    'level' in error
+  );
+}
+
+export function getErrorByCode(code: string): ErrorEntry | null {
+  const catalog = require('./ErrorCatalog').ErrorCatalog as ErrorCatalog;
+  
+  for (const category of Object.values(catalog)) {
+    for (const error of Object.values(category)) {
+      if (isErrorEntry(error) && error.code === code) {
+        return error;
+      }
+    }
+  }
+  return null;
+}
+
+export function getErrorsByLevel(level: ErrorLevel): ErrorEntry[] {
+  const catalog = require('./ErrorCatalog').ErrorCatalog as ErrorCatalog;
+  
+  const errors: ErrorEntry[] = [];
+  for (const category of Object.values(catalog)) {
+    for (const error of Object.values(category)) {
+      if (isErrorEntry(error) && error.level === level) {
+        errors.push(error);
+      }
+    }
+  }
+  return errors;
+}
+
+export default require('./ErrorCatalog').ErrorCatalog as ErrorCatalog;

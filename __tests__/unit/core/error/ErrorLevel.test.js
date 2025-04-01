@@ -2,7 +2,7 @@
  * ErrorLevel unit tests
  */
 
-const ErrorLevel = require('../../../../src/core/error/ErrorLevel');
+import { ErrorLevel } from '../../../../src/core/error/ErrorLevel';
 
 describe('ErrorLevel', () => {
   test('should define all required error levels', () => {

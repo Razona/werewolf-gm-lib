@@ -1,9 +1,9 @@
-import { ErrorLevel, ErrorLevelType } from './ErrorLevel';
+import { ErrorLevel } from './ErrorLevel';
 
 export interface ErrorOptions {
   code: string;
   message: string;
-  level?: string; // エラーレベルの値を文字列として扱う
+  level?: ErrorLevel; // ErrorLevel型に修正
   context?: Record<string, any>;
 }
 
@@ -47,7 +47,7 @@ export class ErrorHandler {
     this.errorLog = [];
   }
 
-  getErrorsByLevel(level: string): ErrorOptions[] {
+  getErrorsByLevel(level: ErrorLevel): ErrorOptions[] {
     return this.errorLog.filter(error => error.level === level);
   }
 }

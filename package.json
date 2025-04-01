@@ -8,8 +8,8 @@
     "build": "rimraf dist && tsc -p tsconfig.json",
     "clean": "rimraf dist",
     "test": "jest",
-    "test:unit": "jest --config jest.config.js **tests**/unit/core/error",
-    "test:player": "jest --roots=src src/domain/player --coverage=false",
+    "test:unit": "jest --config jest.config.js __tests__/unit/core/error",
+    "test:player": "jest --roots=__tests__ __tests__/unit/domain/player --coverage=false",
     "prepare": "npm run build"
   },
   "directories": {

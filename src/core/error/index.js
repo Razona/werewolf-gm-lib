@@ -1,37 +1,36 @@
-/**
- * エラーシステムのエントリーポイント
- * エラー関連の機能をまとめてエクスポートする
- */
-const ErrorLevel = require('./ErrorLevel');
-const ErrorHandler = require('./ErrorHandler');
-const Validator = require('./Validator');
-const { ErrorCatalog, getErrorByCode, getErrorsByLevel } = require('./ErrorCatalog');
+import ErrorHandler from './ErrorHandler';
+import ErrorCatalog from './ErrorCatalog';
+import ErrorLevel from './ErrorLevel';
+import Validator from './Validator';
 
 /**
- * エラーシステムを作成する
- * @param {object} eventSystem - イベントシステム
- * @param {object} options - オプション設定
- * @returns {object} エラーシステムのインスタンス
+ * エラーシステムを作成
+ * @param {Object} eventSystem - イベントシステム
+ * @param {Object} [options={}] - エラーシステムのオプション
+ * @returns {Object} エラーシステムコンポーネント
  */
 function createErrorSystem(eventSystem, options = {}) {
-  const errorHandler = new ErrorHandler(eventSystem, options.policy);
+  const errorHandler = new ErrorHandler(eventSystem, options);
   const validator = new Validator(errorHandler);
   
   return {
     errorHandler,
-    validator,
-    ErrorCatalog,
-    getErrorByCode,
-    getErrorsByLevel
+    validator
   };
 }
 
-module.exports = {
-  ErrorLevel,
+export {
   ErrorHandler,
-  Validator,
   ErrorCatalog,
-  getErrorByCode,
-  getErrorsByLevel,
+  ErrorLevel,
+  Validator,
+  createErrorSystem
+};
+
+export default {
+  ErrorHandler,
+  ErrorCatalog,
+  ErrorLevel,
+  Validator,
   createErrorSystem
 };
