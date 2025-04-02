@@ -1,4 +1,4 @@
-// カスタムマッチャーの追加
+// jest.setup.js
 expect.extend({
   toBeAlivePlayer(received) {
     const pass = received && received.isAlive === true;
@@ -9,12 +9,9 @@ expect.extend({
       };
     } else {
       return {
-        message: () => `expected ${received ? received.name : 'player'} to be alive`,
+        message: () => `expected ${received.name} to be alive`,
         pass: false
       };
     }
   }
 });
-
-// グローバルタイムアウト設定
-jest.setTimeout(10000); // 10秒

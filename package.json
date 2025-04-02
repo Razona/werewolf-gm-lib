@@ -10,7 +10,10 @@
     "test": "jest",
     "test:unit": "jest --config jest.config.js __tests__/unit/core/error",
     "test:player": "jest --roots=__tests__ __tests__/unit/domain/player --coverage=false",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test:roles": "jest src/domain/role/__tests__",
+    "test:phase": "jest src/domain/phase/__tests__/PhaseManager.test.js",
+    "test:phase:coverage": "jest --config jest.config.js src/domain/phase/__tests__/PhaseManager.test.js --coverage"
   },
   "directories": {
     "doc": "docs",
@@ -30,8 +33,7 @@
   },
   "keywords": [
     "人狼ゲーム",
-    "ゲームライブラリ",
-    "TypeScript"
+    "ゲームライブラリ"
   ],
   "author": "",
   "license": "ISC"
