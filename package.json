@@ -13,7 +13,10 @@
     "prepare": "npm run build",
     "test:roles": "jest src/domain/role/__tests__",
     "test:phase": "jest src/domain/phase/__tests__/PhaseManager.test.js",
-    "test:phase:coverage": "jest --config jest.config.js src/domain/phase/__tests__/PhaseManager.test.js --coverage"
+    "test:phase:coverage": "jest --config jest.config.js src/domain/phase/__tests__/PhaseManager.test.js --coverage",
+    "test:action": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/action/__tests__",
+    "test:vote": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/vote/__tests__",
+    "test:action:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js src/domain/action/__tests__/Action.test.js --coverage"
   },
   "directories": {
     "doc": "docs",

@@ -1,0 +1,1324 @@
+// src/domain/vote/__tests__/VoteManager.test.js
+/**
+ * VoteManager クラスのテストファイル
+ *
+ * 投票システムの全機能を検証するための包括的なテストスイート。
+ * 投票フェーズ管理、投票登録、集計、決選投票、処刑実行などの
+ * 主要機能について正常系と異常系の両方をテストします。
+ */
+import VoteManager from '../VoteManager.js.bak';
+import Vote from '../Vote';
+
+describe('VoteManager', () => {
+  // テスト共通の変数
+  let voteManager;
+  let mockGame;
+  let mockEventSystem;
+  let mockPlayerManager;
+  let mockErrorHandler;
+  let mockPhaseManager;
+
+  /**
+   * モックファクトリ関数 - 標準的なモックオブジェクトを生成
+   */
+  const createMocks = () => {
+    const eventSystem = {
+      emit: jest.fn(),
+      on: jest.fn()
+    };
+
+    const playerManager = {
+      getAlivePlayers: jest.fn().mockReturnValue([
+        { id: 1, name: 'Player1', isAlive: true },
+        { id: 2, name: 'Player2', isAlive: true },
+        { id: 3, name: 'Player3', isAlive: true, role: { name: 'mayor' } }
+      ]),
+      getPlayer: jest.fn().mockImplementation((id) => {
+        const players = {
+          1: { id: 1, name: 'Player1', isAlive: true, role: { name: 'villager' } },
+          2: { id: 2, name: 'Player2', isAlive: true, role: { name: 'villager' } },
+          3: { id: 3, name: 'Player3', isAlive: true, role: { name: 'mayor' } },
+          4: { id: 4, name: 'Player4', isAlive: false, role: { name: 'villager' } }
+        };
+        return players[id] || null;
+      }),
+      isPlayerAlive: jest.fn().mockImplementation((id) => id !== 4)
+    };
+
+    const errorHandler = {
+      createError: jest.fn().mockImplementation((category, code, data) => {
+        const errorCode = `E${category}_${code}`;
+        return {
+          code: errorCode,
+          message: data.message,
+          context: data
+        };
+      })
+    };
+
+    const phaseManager = {
+      getCurrentPhase: jest.fn().mockReturnValue('vote'),
+      getCurrentTurn: jest.fn().mockReturnValue(2),
+      setPhaseContextData: jest.fn()
+    };
+
+    return {
+      eventSystem,
+      playerManager,
+      errorHandler,
+      phaseManager,
+      game: {
+        eventSystem,
+        playerManager,
+        errorHandler,
+        phaseManager,
+        killPlayer: jest.fn(),
+        options: {
+          regulations: {
+            executionRule: 'runoff',
+            runoffTieRule: 'random'
+          }
+        }
+      }
+    };
+  };
+
+  beforeEach(() => {
+    // 各テスト前にモックを初期化
+    const mocks = createMocks();
+    mockEventSystem = mocks.eventSystem;
+    mockPlayerManager = mocks.playerManager;
+    mockErrorHandler = mocks.errorHandler;
+    mockPhaseManager = mocks.phaseManager;
+    mockGame = mocks.game;
+
+    // テスト対象のインスタンス化
+    voteManager = new VoteManager(mockGame);
+  });
+
+  afterEach(() => {
+    // モックのリセット
+    jest.clearAllMocks();
+  });
+
+  // A. 投票フェーズ管理テスト
+  describe('A. 投票フェーズ管理', () => {
+    describe('startVoting', () => {
+      test('should initialize voting phase correctly with all required data', () => {
+        // Act
+        const result = voteManager.startVoting('execution');
+
+        // Assert
+        expect(result).toEqual({
+          type: 'execution',
+          voters: 3,
+          targets: 3
+        });
+
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith('vote.start', {
+          type: 'execution',
+          turn: 2,
+          voters: [1, 2, 3],
+          targets: [1, 2, 3]
+        });
+      });
+
+      test('should throw error with specific code when no alive players exist', () => {
+        // Arrange
+        mockPlayerManager.getAlivePlayers.mockReturnValueOnce([]);
+
+        // Act & Assert
+        expect(() => voteManager.startVoting('execution')).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '201_NO_VOTERS',
+          {
+            message: expect.stringContaining('投票可能なプレイヤーがいません')
+          }
+        );
+      });
+
+      test('should throw error when called during invalid phase (night phase)', () => {
+        // Arrange
+        mockPhaseManager.getCurrentPhase.mockReturnValueOnce('night');
+
+        // Act & Assert
+        expect(() => voteManager.startVoting('execution')).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '104_INVALID_PHASE',
+          {
+            message: expect.stringContaining('投票できません'),
+            phase: 'night'
+          }
+        );
+      });
+
+      test('should handle custom voter and target lists', () => {
+        // Arrange
+        const customVoters = [{ id: 1, name: 'Player1' }];
+        const customTargets = [{ id: 2, name: 'Player2' }];
+
+        // Act
+        voteManager.startVoting('execution', customVoters, customTargets);
+
+        // Assert
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith('vote.start', {
+          type: 'execution',
+          turn: 2,
+          voters: [1],
+          targets: [2]
+        });
+      });
+    });
+
+    test('should initialize runoff voting with limited candidate list', () => {
+      // Arrange
+      const candidates = [2, 3];
+
+      // Act
+      const result = voteManager.startRunoffVote(candidates);
+
+      // Assert
+      expect(result).toEqual({
+        type: 'runoff',
+        voters: 3,
+        candidates: 2
+      });
+
+      // イベント発火確認
+      expect(mockGame.eventSystem.emit).toHaveBeenCalledWith('vote.runoff.start', {
+        turn: 2,
+        voters: [1, 2, 3],
+        candidates: [2, 3]
+      });
+    });
+  });
+
+  // B. 投票登録プロセステスト
+  describe('B. 投票登録プロセス', () => {
+    beforeEach(() => {
+      // 各テストで投票フェーズを初期化
+      voteManager.startVoting('execution');
+    });
+
+    describe('registerVote', () => {
+      test('should register a valid vote and return success with vote object', () => {
+        // Act
+        const result = voteManager.registerVote(1, 2);
+
+        // Assert
+        expect(result).toEqual({
+          success: true,
+          vote: expect.objectContaining({
+            voterId: 1,
+            targetId: 2,
+            voteType: 'execution',
+            voteStrength: 1,
+            turn: 2
+          })
+        });
+
+        // イベント発火確認（投票登録前後）
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'vote.register.before',
+          {
+            vote: expect.objectContaining({
+              voterId: 1,
+              targetId: 2
+            })
+          }
+        );
+
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'vote.register.after',
+          {
+            vote: expect.objectContaining({
+              voterId: 1,
+              targetId: 2
+            }),
+            isChange: false,
+            previousTarget: null
+          }
+        );
+      });
+
+      test('should throw error when dead player tries to vote', () => {
+        // Act & Assert
+        expect(() => voteManager.registerVote(4, 2)).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '101_DEAD_VOTER',
+          {
+            message: expect.stringContaining('死亡したプレイヤーは投票できません'),
+            voterId: 4
+          }
+        );
+      });
+
+      test('should throw error for invalid voter ID', () => {
+        // Arrange - 存在しないプレイヤーID
+        const nonExistentPlayerId = 99;
+
+        // Act & Assert
+        expect(() => voteManager.registerVote(nonExistentPlayerId, 2)).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '102_INVALID_VOTER',
+          {
+            message: expect.stringContaining('無効な投票者ID'),
+            voterId: nonExistentPlayerId
+          }
+        );
+      });
+
+      test('should throw error for invalid target ID', () => {
+        // Arrange - 存在しないターゲットID
+        const nonExistentTargetId = 99;
+
+        // Act & Assert
+        expect(() => voteManager.registerVote(1, nonExistentTargetId)).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '103_INVALID_TARGET',
+          {
+            message: expect.stringContaining('無効な投票対象ID'),
+            targetId: nonExistentTargetId
+          }
+        );
+      });
+
+      test('should correctly handle vote with custom vote strength (mayor)', () => {
+        // Arrange - Player3 は村長 (voteStrength = 2)
+
+        // Act
+        const result = voteManager.registerVote(3, 2);
+
+        // Assert
+        expect(result.vote).toHaveProperty('voteStrength', 2);
+      });
+    });
+
+    describe('changeVote', () => {
+      test('should change existing vote to new target and update timestamp', () => {
+        // Arrange - まず投票を登録
+        const initialVoteTime = Date.now();
+        voteManager.registerVote(1, 2);
+
+        // 時間経過をシミュレート
+        jest.spyOn(Date, 'now').mockReturnValueOnce(initialVoteTime + 1000);
+
+        // Act - 投票先を変更
+        const result = voteManager.changeVote(1, 3);
+
+        // Assert
+        expect(result).toEqual({
+          success: true,
+          vote: expect.objectContaining({
+            voterId: 1,
+            targetId: 3,
+            voteType: 'execution',
+            timestamp: initialVoteTime + 1000
+          })
+        });
+
+        // イベント発火確認
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'vote.change.before',
+          {
+            voterId: 1,
+            oldTargetId: 2,
+            newTargetId: 3
+          }
+        );
+
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'vote.change.after',
+          {
+            vote: expect.objectContaining({
+              voterId: 1,
+              targetId: 3
+            }),
+            oldTargetId: 2
+          }
+        );
+      });
+
+      test('should throw error when trying to change non-existing vote', () => {
+        // Act & Assert - 事前に投票していないプレイヤーの投票変更
+        expect(() => voteManager.changeVote(1, 3)).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '105_NO_PREVIOUS_VOTE',
+          {
+            message: expect.stringContaining('変更する投票がありません'),
+            voterId: 1
+          }
+        );
+      });
+
+      test('should return unchanged flag when changing to the same target', () => {
+        // Arrange
+        voteManager.registerVote(1, 2);
+
+        // Act - 同じ対象への変更
+        const result = voteManager.changeVote(1, 2);
+
+        // Assert
+        expect(result).toEqual({
+          success: true,
+          unchanged: true,
+          vote: expect.objectContaining({
+            voterId: 1,
+            targetId: 2
+          })
+        });
+
+        // イベント発火がないことを確認
+        expect(mockGame.eventSystem.emit).not.toHaveBeenCalledWith(
+          'vote.change.before',
+          expect.anything()
+        );
+      });
+
+      test('should validate new target just like registerVote', () => {
+        // Arrange
+        voteManager.registerVote(1, 2);
+        const invalidTargetId = 99;
+
+        // Act & Assert
+        expect(() => voteManager.changeVote(1, invalidTargetId)).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '103_INVALID_TARGET',
+          expect.anything()
+        );
+      });
+    });
+  });
+
+  // C. 投票集計機能テスト
+  describe('C. 投票集計機能', () => {
+    beforeEach(() => {
+      // 各テストで投票フェーズを初期化
+      voteManager.startVoting('execution');
+    });
+
+    describe('countVotes', () => {
+      test('should count votes correctly with precise vote counts', () => {
+        // Arrange - 複数の投票
+        voteManager.registerVote(1, 3); // Player1 -> Player3
+        voteManager.registerVote(2, 3); // Player2 -> Player3
+
+        // Act
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result).toEqual({
+          type: 'execution',
+          turn: 2,
+          votes: expect.any(Array),
+          counts: { '3': 2 }, // Player3が2票獲得
+          maxVoted: [3],
+          maxCount: 2,
+          isTie: false,
+          needsRunoff: false
+        });
+
+        // イベント発火確認
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'vote.count.after',
+          {
+            type: 'execution',
+            turn: 2,
+            votes: expect.any(Array),
+            counts: { '3': 2 },
+            maxVoted: [3],
+            isTie: false,
+            needsRunoff: false
+          }
+        );
+      });
+
+      test('should consider vote strength (mayor votes worth 2)', () => {
+        // Arrange
+        voteManager.registerVote(1, 2); // Player1 -> Player2 (1票)
+        voteManager.registerVote(2, 3); // Player2 -> Player3 (1票)
+        voteManager.registerVote(3, 2); // Player3(村長) -> Player2 (2票)
+
+        // Act
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result.counts).toEqual({
+          '2': 3, // Player2が3票獲得 (1票 + 村長2票)
+          '3': 1  // Player3が1票獲得
+        });
+        expect(result.maxVoted).toEqual([2]);
+        expect(result.maxCount).toBe(3);
+        expect(result.isTie).toBe(false);
+      });
+
+      test('should detect tied votes correctly and set needsRunoff flag based on regulation', () => {
+        // Arrange - 同数投票
+        voteManager.registerVote(1, 2); // Player1 -> Player2
+        voteManager.registerVote(2, 3); // Player2 -> Player3
+
+        // Act
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result.counts).toEqual({
+          '2': 1,
+          '3': 1
+        });
+        expect(result.maxVoted).toEqual([2, 3]);
+        expect(result.isTie).toBe(true);
+        // runoff設定なので決選投票が必要
+        expect(result.needsRunoff).toBe(true);
+      });
+
+      test('should respect executionRule in regulations for tie handling', () => {
+        // Arrange
+        voteManager.registerVote(1, 2);
+        voteManager.registerVote(2, 3);
+        // レギュレーション変更: 同数なら処刑なし
+        mockGame.options.regulations.executionRule = 'no_execution';
+
+        // Act
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result.isTie).toBe(true);
+        // 処刑なし設定なので決選投票は不要
+        expect(result.needsRunoff).toBe(false);
+      });
+
+      test('should handle no votes case gracefully', () => {
+        // Act - 投票なしの状態で集計
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result).toEqual({
+          type: 'execution',
+          turn: 2,
+          votes: [],
+          counts: {},
+          maxVoted: [],
+          maxCount: 0,
+          isTie: false,
+          needsRunoff: false
+        });
+      });
+
+      test('should handle extreme case: all votes to a single player', () => {
+        // Arrange - 全員が同じプレイヤーに投票
+        voteManager.registerVote(1, 3);
+        voteManager.registerVote(2, 3);
+        voteManager.registerVote(3, 3); // 村長の2票を含む
+
+        // Act
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result.counts).toEqual({ '3': 4 }); // 計4票
+        expect(result.maxVoted).toEqual([3]);
+        expect(result.isTie).toBe(false);
+      });
+    });
+  });
+
+  // D. 決選投票システムテスト
+  describe('D. 決選投票システム', () => {
+    beforeEach(() => {
+      // 基本投票フェーズの後に決選投票フェーズを設定
+      voteManager.startVoting('execution');
+    });
+
+    describe('finalizeRunoffVote', () => {
+      test('should finalize runoff vote and determine execution target', () => {
+        // Arrange - 決選投票設定と投票実行
+        voteManager.startRunoffVote([2, 3]);
+        voteManager.registerVote(1, 2);
+        voteManager.registerVote(2, 2);
+        voteManager.registerVote(3, 3); // 村長(2票)
+
+        // Act
+        const result = voteManager.finalizeRunoffVote();
+
+        // Assert - 同点(2票ずつ)だが、resolveRunoffTieが呼ばれる
+        expect(result).toEqual({
+          type: 'runoff',
+          turn: 2,
+          votes: expect.any(Array),
+          counts: {
+            '2': 2,
+            '3': 2  // 村長の2票
+          },
+          maxVoted: [2, 3],
+          maxCount: 2,
+          isTie: true,
+          executionTarget: expect.any(Number) // モックの戻り値に依存
+        });
+
+        // イベント発火確認
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'vote.runoff.result',
+          expect.objectContaining({
+            executionTarget: expect.any(Number)
+          })
+        );
+      });
+
+      test('should resolve tie with random selection during runoff vote', () => {
+        // Arrange - 決選投票で同数になるよう設定
+        voteManager.startRunoffVote([2, 3]);
+        voteManager.registerVote(1, 2);
+        voteManager.registerVote(2, 3);
+
+        // resolveRunoffTieのモック
+        jest.spyOn(voteManager, 'resolveRunoffTie').mockReturnValueOnce(2);
+
+        // Act
+        const result = voteManager.finalizeRunoffVote();
+
+        // Assert
+        expect(result.isTie).toBe(true);
+        expect(result.executionTarget).toBe(2);
+        expect(voteManager.resolveRunoffTie).toHaveBeenCalledWith([2, 3], 'random');
+      });
+
+      test('should handle no execution rule in runoff resolution', () => {
+        // Arrange
+        voteManager.startRunoffVote([2, 3]);
+        voteManager.registerVote(1, 2);
+        voteManager.registerVote(2, 3);
+
+        // 処刑なしルールに変更
+        mockGame.options.regulations.runoffTieRule = 'no_execution';
+
+        // Act
+        const result = voteManager.finalizeRunoffVote();
+
+        // Assert
+        expect(result.executionTarget).toBeNull();
+      });
+    });
+
+    describe('resolveRunoffTie', () => {
+      test('should resolve tie with predictable random selection', () => {
+        // Arrange
+        const tiedPlayers = [2, 3, 4];
+
+        // ランダム選択のモック
+        jest.spyOn(Math, 'random').mockReturnValueOnce(0.3); // 0.3 * 3 = 0.9 -> index 0
+
+        // Act
+        const result = voteManager.resolveRunoffTie(tiedPlayers, 'random');
+
+        // Assert
+        expect(result).toBe(2); // 最初の要素が選ばれる
+      });
+
+      test('should resolve tie with no execution rule', () => {
+        // Arrange
+        const tiedPlayers = [2, 3];
+
+        // Act
+        const result = voteManager.resolveRunoffTie(tiedPlayers, 'no_execution');
+
+        // Assert
+        expect(result).toBeNull();
+      });
+
+      test('should resolve tie with all execution rule', () => {
+        // Arrange
+        const tiedPlayers = [2, 3, 4];
+
+        // Act
+        const result = voteManager.resolveRunoffTie(tiedPlayers, 'all_execution');
+
+        // Assert
+        expect(result).toBe('all');
+      });
+
+      test('should default to random if rule is invalid', () => {
+        // Arrange
+        const tiedPlayers = [2, 3];
+        jest.spyOn(Math, 'random').mockReturnValueOnce(0.7); // 0.7 * 2 = 1.4 -> index 1
+
+        // Act
+        const result = voteManager.resolveRunoffTie(tiedPlayers, 'invalid_rule');
+
+        // Assert
+        expect(result).toBe(3); // 2番目の要素が選ばれる
+      });
+    });
+  });
+
+  // E. 処刑実行プロセステスト
+  describe('E. 処刑実行プロセス', () => {
+    beforeEach(() => {
+      // 投票フェーズを初期化
+      voteManager.startVoting('execution');
+    });
+
+    describe('determineExecutionTarget', () => {
+      test('should determine target from normal vote without tie', () => {
+        // Arrange
+        const voteResult = {
+          type: 'execution',
+          isTie: false,
+          maxVoted: [2]
+        };
+
+        // Act
+        const result = voteManager.determineExecutionTarget(voteResult);
+
+        // Assert
+        expect(result).toEqual({
+          needsRunoff: false,
+          executionTarget: 2
+        });
+      });
+
+      test('should determine need for runoff with execution rule set to runoff', () => {
+        // Arrange
+        const voteResult = {
+          type: 'execution',
+          isTie: true,
+          maxVoted: [2, 3]
+        };
+        // レギュレーション確認
+        expect(mockGame.options.regulations.executionRule).toBe('runoff');
+
+        // Act
+        const result = voteManager.determineExecutionTarget(voteResult);
+
+        // Assert
+        expect(result).toEqual({
+          needsRunoff: true,
+          candidates: [2, 3]
+        });
+      });
+
+      test('should directly resolve tie with random rule', () => {
+        // Arrange
+        const voteResult = {
+          type: 'execution',
+          isTie: true,
+          maxVoted: [2, 3]
+        };
+        mockGame.options.regulations.executionRule = 'random';
+        jest.spyOn(voteManager, 'resolveRunoffTie').mockReturnValueOnce(2);
+
+        // Act
+        const result = voteManager.determineExecutionTarget(voteResult);
+
+        // Assert
+        expect(result).toEqual({
+          needsRunoff: false,
+          executionTarget: 2
+        });
+        expect(voteManager.resolveRunoffTie).toHaveBeenCalledWith([2, 3], 'random');
+      });
+
+      test('should handle no execution rule for ties', () => {
+        // Arrange
+        const voteResult = {
+          type: 'execution',
+          isTie: true,
+          maxVoted: [2, 3]
+        };
+        mockGame.options.regulations.executionRule = 'no_execution';
+
+        // Act
+        const result = voteManager.determineExecutionTarget(voteResult);
+
+        // Assert
+        expect(result).toEqual({
+          needsRunoff: false,
+          executionTarget: null
+        });
+      });
+    });
+
+    describe('executeTarget', () => {
+      test('should execute target player with proper events and state changes', () => {
+        // Act
+        const result = voteManager.executeTarget(2);
+
+        // Assert
+        expect(result).toEqual({
+          executed: true,
+          targetId: 2,
+          playerName: 'Player2'
+        });
+
+        // イベント発火確認
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'execution.before',
+          {
+            targetId: 2,
+            playerName: 'Player2',
+            turn: 2
+          }
+        );
+
+        expect(mockGame.killPlayer).toHaveBeenCalledWith(2, 'execution');
+
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'execution.after',
+          {
+            targetId: 2,
+            playerName: 'Player2',
+            turn: 2,
+            role: expect.any(String)
+          }
+        );
+      });
+
+      test('should handle no execution case (null target)', () => {
+        // Act
+        const result = voteManager.executeTarget(null);
+
+        // Assert
+        expect(result).toEqual({
+          executed: false,
+          reason: 'no_execution'
+        });
+
+        expect(mockGame.eventSystem.emit).toHaveBeenCalledWith(
+          'execution.none',
+          {
+            turn: 2,
+            reason: 'no_execution'
+          }
+        );
+
+        expect(mockGame.killPlayer).not.toHaveBeenCalled();
+      });
+
+      test('should handle all candidates execution special case', () => {
+        // Arrange
+        voteManager.startRunoffVote([2, 3]);
+        jest.spyOn(voteManager, 'executeAllCandidates').mockReturnValueOnce({
+          executed: true,
+          count: 2,
+          targets: [2, 3]
+        });
+
+        // Act
+        const result = voteManager.executeTarget('all');
+
+        // Assert
+        expect(voteManager.executeAllCandidates).toHaveBeenCalled();
+        expect(result).toEqual({
+          executed: true,
+          count: 2,
+          targets: [2, 3]
+        });
+      });
+
+      test('should handle player that does not exist', () => {
+        // Arrange
+        const nonExistentId = 99;
+
+        // Act & Assert
+        expect(() => voteManager.executeTarget(nonExistentId)).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '103_INVALID_TARGET',
+          expect.objectContaining({
+            targetId: nonExistentId
+          })
+        );
+      });
+
+      test('should handle already dead player', () => {
+        // Arrange - Player4は既に死亡
+
+        // Act & Assert
+        expect(() => voteManager.executeTarget(4)).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '106_ALREADY_DEAD',
+          expect.objectContaining({
+            targetId: 4
+          })
+        );
+      });
+    });
+
+    // executeAllCandidatesのテストを追加
+    test('should execute all candidates correctly', () => {
+      // Arrange
+      voteManager.startRunoffVote([2, 3]);
+
+      // Act
+      const result = voteManager.executeAllCandidates();
+
+      // Assert
+      expect(result).toHaveProperty('executed', true);
+      expect(result).toHaveProperty('count', 2);
+      expect(mockGame.killPlayer).toHaveBeenCalledTimes(2);
+      expect(mockGame.killPlayer).toHaveBeenCalledWith(2, 'execution');
+      expect(mockGame.killPlayer).toHaveBeenCalledWith(3, 'execution');
+    });
+  });
+
+  // F. 投票履歴管理テスト
+  describe('F. 投票履歴管理', () => {
+    beforeEach(() => {
+      // 投票フェーズを初期化して投票を行う
+      voteManager.startVoting('execution');
+      voteManager.registerVote(1, 2);
+      voteManager.registerVote(2, 3);
+      // 決選投票も行う
+      voteManager.startRunoffVote([2, 3]);
+      voteManager.registerVote(1, 2);
+      voteManager.registerVote(2, 3);
+      voteManager.registerVote(3, 2);
+    });
+
+    describe('getVoteHistory', () => {
+      test('should get complete vote history with all votes properly recorded', () => {
+        // Act
+        const history = voteManager.getVoteHistory();
+
+        // Assert
+        expect(history).toBeDefined();
+        expect(Object.keys(history)).toContain('2'); // ターン2の履歴
+        expect(history[2]).toHaveLength(5); // 5つの投票（通常2票、決選3票）
+
+        // 型と構造の詳細確認
+        const executionVotes = history[2].filter(v => v.voteType === 'execution');
+        const runoffVotes = history[2].filter(v => v.voteType === 'runoff');
+
+        expect(executionVotes).toHaveLength(2);
+        expect(runoffVotes).toHaveLength(3);
+
+        // 投票オブジェクトの構造確認
+        expect(executionVotes[0]).toEqual(expect.objectContaining({
+          voterId: 1,
+          targetId: 2,
+          voteType: 'execution',
+          turn: 2,
+          timestamp: expect.any(Number)
+        }));
+      });
+
+      test('should get vote history for specific turn with correct filtering', () => {
+        // Act
+        const history = voteManager.getVoteHistory(2);
+
+        // Assert
+        expect(history).toHaveLength(5);
+
+        // 投票履歴の内容確認
+        const voter1Votes = history.filter(v => v.voterId === 1);
+        expect(voter1Votes).toHaveLength(2); // Player1の投票は2回（通常+決選）
+        expect(voter1Votes[0].targetId).toBe(2);
+        expect(voter1Votes[1].targetId).toBe(2);
+      });
+
+      test('should get vote history for specific type with correct filtering', () => {
+        // Act
+        const history = voteManager.getVoteHistory(null, 'runoff');
+
+        // Assert
+        expect(history[2]).toHaveLength(3); // 決選投票は3票
+        expect(history[2].every(v => v.voteType === 'runoff')).toBe(true);
+      });
+
+      test('should handle case with no votes in history', () => {
+        // Arrange - 履歴をリセット
+        voteManager = new VoteManager(mockGame);
+
+        // Act
+        const history = voteManager.getVoteHistory();
+
+        // Assert
+        expect(history).toEqual({});
+      });
+    });
+
+    describe('getPlayerVoteHistory', () => {
+      test('should get complete voting history for a specific player', () => {
+        // Act
+        const history = voteManager.getPlayerVoteHistory(1);
+
+        // Assert
+        expect(history).toHaveLength(2);
+
+        // 履歴の詳細確認
+        expect(history[0]).toEqual(expect.objectContaining({
+          voteType: 'execution',
+          targetId: 2,
+          turn: 2
+        }));
+
+        expect(history[1]).toEqual(expect.objectContaining({
+          voteType: 'runoff',
+          targetId: 2,
+          turn: 2
+        }));
+      });
+
+      test('should handle player with no votes correctly', () => {
+        // Act - 投票履歴のない架空のプレイヤー
+        const history = voteManager.getPlayerVoteHistory(99);
+
+        // Assert
+        expect(history).toHaveLength(0);
+        expect(Array.isArray(history)).toBe(true);
+      });
+
+      test('should handle vote changes in player history', () => {
+        // Arrange - 投票変更を追加
+        voteManager.startVoting('execution');
+        voteManager.registerVote(1, 2);
+        voteManager.changeVote(1, 3);
+
+        // Act
+        const history = voteManager.getPlayerVoteHistory(1);
+
+        // Assert
+        expect(history).toHaveLength(4); // 元の2票 + 新たな変更履歴2票
+
+        // 最新の投票が最後にあることを確認
+        const lastVote = history[history.length - 1];
+        expect(lastVote).toEqual(expect.objectContaining({
+          targetId: 3,
+          voteType: 'execution'
+        }));
+      });
+    });
+
+    describe('getPlayerTargetHistory', () => {
+      test('should get complete target history for a specific player', () => {
+        // Act - Player2への投票履歴
+        const history = voteManager.getPlayerTargetHistory(2);
+
+        // Assert
+        expect(history).toHaveLength(3); // Player1とPlayer3からの投票(実行1回、決選2回)
+
+        // 投票元の確認
+        const voter1Votes = history.filter(v => v.voterId === 1);
+        const voter3Votes = history.filter(v => v.voterId === 3);
+
+        expect(voter1Votes).toHaveLength(2); // 実行投票と決選投票
+        expect(voter3Votes).toHaveLength(1); // 決選投票のみ
+      });
+
+      test('should handle player with no votes received', () => {
+        // Act - 投票されていないプレイヤー
+        const history = voteManager.getPlayerTargetHistory(1);
+
+        // Assert
+        expect(history).toHaveLength(0);
+        expect(Array.isArray(history)).toBe(true);
+      });
+    });
+
+    describe('generateVoteSummary', () => {
+      test('should generate comprehensive vote summary for a turn', () => {
+        // Act
+        const summary = voteManager.generateVoteSummary(2);
+
+        // Assert
+        expect(summary).toEqual({
+          turn: 2,
+          types: {
+            execution: {
+              votes: 2,
+              counts: {
+                '2': 1,
+                '3': 1
+              },
+              maxCount: 1,
+              maxVoted: [2, 3]
+            },
+            runoff: {
+              votes: 3,
+              counts: {
+                '2': 2,
+                '3': 1
+              },
+              maxCount: 2,
+              maxVoted: [2]
+            }
+          }
+        });
+      });
+
+      test('should handle turn with no votes', () => {
+        // Act - 投票のないターン
+        const summary = voteManager.generateVoteSummary(99);
+
+        // Assert
+        expect(summary).toEqual({
+          turn: 99,
+          types: {}
+        });
+      });
+    });
+  });
+
+  // G. 役職連携テスト
+  describe('G. 役職連携', () => {
+    beforeEach(() => {
+      // 投票フェーズを初期化
+      voteManager.startVoting('execution');
+    });
+
+    describe('getVoteStrength', () => {
+      test('should return correct vote strength for mayor (2 votes)', () => {
+        // Act
+        const strength = voteManager.getVoteStrength(3); // Player3は村長
+
+        // Assert
+        expect(strength).toBe(2);
+      });
+
+      test('should return default vote strength for normal player (1 vote)', () => {
+        // Act
+        const strength = voteManager.getVoteStrength(1);
+
+        // Assert
+        expect(strength).toBe(1);
+      });
+
+      test('should handle non-existent player gracefully', () => {
+        // Act
+        const strength = voteManager.getVoteStrength(99);
+
+        // Assert
+        expect(strength).toBe(1); // デフォルト値を返す
+      });
+
+      test('should handle custom vote strength calculation', () => {
+        // Arrange - 特殊計算ロジックをモック
+        const originalCalculator = voteManager.calculateVoteStrength;
+        voteManager.calculateVoteStrength = jest.fn().mockImplementation((player) => {
+          return player.id === 1 ? 3 : 1; // Player1は3票分
+        });
+
+        // Act
+        const strength = voteManager.getVoteStrength(1);
+
+        // Assert
+        expect(strength).toBe(3);
+
+        // 後処理
+        voteManager.calculateVoteStrength = originalCalculator;
+      });
+    });
+
+    describe('checkRoleSpecificVoteConstraint', () => {
+      test('should validate role-specific constraints and return valid result', () => {
+        // Arrange
+        const voter = mockPlayerManager.getPlayer(1);
+
+        // Act
+        const result = voteManager.checkRoleSpecificVoteConstraint(voter, 2);
+
+        // Assert
+        expect(result).toEqual({ valid: true });
+      });
+
+      test('should reject vote based on role constraint', () => {
+        // Arrange
+        const voter = mockPlayerManager.getPlayer(1);
+        // 役職制約のためのモック設定
+        jest.spyOn(voteManager, 'checkRoleSpecificVoteConstraint')
+          .mockReturnValueOnce({
+            valid: false,
+            reason: 'ROLE_CONSTRAINT',
+            message: '役職の制約により投票できません'
+          });
+
+        // Act & Assert
+        expect(() => voteManager.validateVote(1, 2)).toThrow();
+        expect(mockErrorHandler.createError).toHaveBeenCalledWith(
+          '5',
+          '203_ROLE_CONSTRAINT',
+          expect.objectContaining({
+            message: '役職の制約により投票できません'
+          })
+        );
+      });
+
+      test('should implement special voting rules for mason (example role constraint)', () => {
+        // Arrange - Masonの特殊ルールをシミュレート
+        const voter = {
+          id: 5,
+          role: { name: 'mason' }
+        };
+        const target = {
+          id: 6,
+          role: { name: 'mason' }
+        };
+
+        // Masonの相互認識をモック
+        mockPlayerManager.getPlayer.mockImplementation((id) => {
+          if (id === 5) return voter;
+          if (id === 6) return target;
+          return null;
+        });
+
+        // 特殊ルールをモック
+        voteManager.checkRoleSpecificVoteConstraint = jest.fn().mockImplementation((voter, targetId) => {
+          // Masonは他のMasonに投票できない例
+          if (voter.role.name === 'mason' && mockPlayerManager.getPlayer(targetId)?.role?.name === 'mason') {
+            return {
+              valid: false,
+              reason: 'MASON_RESTRICTION',
+              message: '共有者は互いに投票できません'
+            };
+          }
+          return { valid: true };
+        });
+
+        // Act
+        const result = voteManager.checkRoleSpecificVoteConstraint(voter, 6);
+
+        // Assert
+        expect(result).toEqual({
+          valid: false,
+          reason: 'MASON_RESTRICTION',
+          message: '共有者は互いに投票できません'
+        });
+      });
+    });
+  });
+
+  // H. エッジケースと特殊シナリオ
+  describe('H. エッジケースと特殊シナリオ', () => {
+    describe('レギュレーション変更', () => {
+      test('should reflect changes in execution rule dynamically', () => {
+        // Arrange
+        voteManager.startVoting('execution');
+        voteManager.registerVote(1, 2);
+        voteManager.registerVote(2, 3);
+        // レギュレーション変更
+        mockGame.options.regulations.executionRule = 'no_execution';
+
+        // Act
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result).toHaveProperty('isTie', true);
+        expect(result).toHaveProperty('needsRunoff', false); // 処刑なしに変更されたため
+      });
+
+      test('should adapt to changes in runoffTieRule', () => {
+        // Arrange
+        voteManager.startVoting('execution');
+        voteManager.registerVote(1, 2);
+        voteManager.registerVote(2, 3);
+        voteManager.startRunoffVote([2, 3]);
+        voteManager.registerVote(1, 2);
+        voteManager.registerVote(2, 3);
+
+        // レギュレーション変更
+        mockGame.options.regulations.runoffTieRule = 'all_execution';
+
+        // Act
+        const result = voteManager.finalizeRunoffVote();
+
+        // Assert
+        expect(result).toHaveProperty('executionTarget', 'all');
+      });
+    });
+
+    describe('極端なケース', () => {
+      test('should handle single player scenario correctly', () => {
+        // Arrange
+        mockPlayerManager.getAlivePlayers.mockReturnValueOnce([
+          { id: 1, name: 'Player1', isAlive: true }
+        ]);
+
+        // Act
+        voteManager.startVoting('execution');
+        voteManager.registerVote(1, 1);
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result).toHaveProperty('maxVoted', [1]);
+        expect(result).toHaveProperty('isTie', false);
+      });
+
+      test('should handle case where no one votes', () => {
+        // Arrange
+        voteManager.startVoting('execution');
+        // 誰も投票しない
+
+        // Act
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result.counts).toEqual({});
+        expect(result.maxVoted).toEqual([]);
+        expect(result.maxCount).toBe(0);
+      });
+
+      test('should handle extremely large number of tied votes', () => {
+        // Arrange - 大量の同数得票をシミュレート
+        voteManager.startVoting('execution');
+        const tiedCandidates = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+        // checkForTieのモックで大量の同数票を返す
+        jest.spyOn(voteManager, 'checkForTie').mockReturnValueOnce({
+          isTie: true,
+          tiedPlayers: tiedCandidates
+        });
+
+        // レギュレーション設定
+        mockGame.options.regulations.executionRule = 'random';
+
+        // ランダム選択のモック
+        jest.spyOn(voteManager, 'resolveRunoffTie');
+
+        // Act
+        const result = voteManager.countVotes();
+
+        // Assert
+        expect(result.isTie).toBe(true);
+        expect(voteManager.resolveRunoffTie).toHaveBeenCalledWith(
+          tiedCandidates,
+          'random'
+        );
+      });
+    });
+
+    describe('外部イベントとの連携', () => {
+      test('should handle phase transition events correctly', () => {
+        // Arrange
+        voteManager.initializeEventListeners();
+        voteManager.startVoting('execution');
+        voteManager.registerVote(1, 2);
+        voteManager.registerVote(2, 3);
+
+        // 投票結果集計
+        const countResult = voteManager.countVotes();
+
+        // フェーズ終了イベントハンドラーをシミュレート
+        const phaseEndHandler = mockEventSystem.on.mock.calls.find(
+          call => call[0] === 'phase.end.vote'
+        )[1];
+
+        // Act - フェーズ終了時の処理を実行
+        phaseEndHandler({ phase: 'vote', turn: 2 });
+
+        // Assert
+        expect(mockPhaseManager.setPhaseContextData).toHaveBeenCalledWith(
+          expect.objectContaining({
+            needsRunoff: true,
+            runoffCandidates: [2, 3]
+          })
+        );
+      });
+    });
+  });
+});

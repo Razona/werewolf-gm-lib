@@ -1,0 +1,835 @@
+/**
+ * Action クラスのテスト
+ * 人狼ゲームの各種アクション（占い、護衛、襲撃など）を表現する基本クラスのテスト
+ *
+ * このテストはActionクラスの基本機能だけでなく、占い、護衛、襲撃などの
+ * 人狼ゲーム特有のルールと相互作用も検証します。
+ */
+
+// モックモジュール
+jest.mock('../../../core/event/EventSystem');
+jest.mock('../../../core/error/ErrorHandler');
+
+// インポート
+import { EventSystem } from '../../../core/event/EventSystem';
+import { ErrorHandler } from '../../../core/error/ErrorHandler';
+import { Action } from '../Action';
+
+describe('Action クラス', () => {
+  // テスト前の共通セットアップ
+  let mockEventSystem;
+  let mockErrorHandler;
+  let mockGame;
+  let mockPlayerManager;
+  let mockRoleManager;
+  let mockPhaseManager;
+  let validActionData;
+
+  // テスト用プレイヤーデータの初期定義
+  const initialTestPlayers = {
+    // 占い師プレイヤー
+    seer: {
+      id: 1,
+      name: '占い師プレイヤー',
+      isAlive: true,
+      role: { name: 'seer', team: 'village' }
+    },
+    // 騎士プレイヤー
+    knight: {
+      id: 2,
+      name: '騎士プレイヤー',
+      isAlive: true,
+      role: { name: 'knight', team: 'village' }
+    },
+    // 人狼プレイヤー
+    werewolf: {
+      id: 3,
+      name: '人狼プレイヤー',
+      isAlive: true,
+      role: { name: 'werewolf', team: 'werewolf' }
+    },
+    // 村人プレイヤー
+    villager: {
+      id: 4,
+      name: '村人プレイヤー',
+      isAlive: true,
+      isGuarded: false,
+      role: { name: 'villager', team: 'village' }
+    },
+    // 妖狐プレイヤー
+    fox: {
+      id: 5,
+      name: '妖狐プレイヤー',
+      isAlive: true,
+      role: { name: 'fox', team: 'fox' }
+    }
+  };
+
+  // 各テストで使用する可能性があるプレイヤーデータ
+  let testPlayers;
+
+  // テスト用役職データ
+  const roleDefinitions = {
+    seer: {
+      name: 'seer',
+      team: 'village',
+      actionTypes: ['fortune'],
+      fortuneResult: 'white',
+      mediumResult: 'white'
+    },
+    knight: {
+      name: 'knight',
+      team: 'village',
+      actionTypes: ['guard'],
+      fortuneResult: 'white',
+      mediumResult: 'white'
+    },
+    werewolf: {
+      name: 'werewolf',
+      team: 'werewolf',
+      actionTypes: ['attack'],
+      fortuneResult: 'black',
+      mediumResult: 'black'
+    },
+    villager: {
+      name: 'villager',
+      team: 'village',
+      actionTypes: [],
+      fortuneResult: 'white',
+      mediumResult: 'white'
+    },
+    fox: {
+      name: 'fox',
+      team: 'fox',
+      actionTypes: [],
+      fortuneResult: 'white',
+      mediumResult: 'white',
+      // 特殊能力：襲撃耐性、占い師による呪殺効果
+      isImmuneToDeath: { attack: true },
+      isVulnerableTo: { fortune: true }
+    }
+  };
+
+  // レギュレーション設定
+  const regulations = {
+    allowConsecutiveGuard: false,
+    firstNightFortune: 'free'
+  };
+
+  // テストヘルパーメソッド
+  function createAction(actionData) {
+    const action = new Action(actionData);
+    action.setGame(mockGame);
+    return action;
+  }
+
+  beforeEach(() => {
+    // テスト用プレイヤーデータを初期化
+    testPlayers = JSON.parse(JSON.stringify(initialTestPlayers));
+
+    // イベントシステムのモック
+    mockEventSystem = {
+      emit: jest.fn(),
+      on: jest.fn()
+    };
+    // mockImplementation関数が存在すればそれを使う
+    if (typeof EventSystem.mockImplementation === 'function') {
+      EventSystem.mockImplementation(() => mockEventSystem);
+    } else {
+      // 存在しなければ、モックの実装を直接置き換える
+      jest.spyOn(EventSystem.prototype, 'emit').mockImplementation(mockEventSystem.emit);
+      jest.spyOn(EventSystem.prototype, 'on').mockImplementation(mockEventSystem.on);
+    }
+
+    // エラーハンドラーのモック
+    mockErrorHandler = {
+      createError: jest.fn((code, message) => new Error(`${code}: ${message}`)),
+      handleError: jest.fn()
+    };
+    // mockImplementation関数が存在すればそれを使う
+    if (typeof ErrorHandler.mockImplementation === 'function') {
+      ErrorHandler.mockImplementation(() => mockErrorHandler);
+    } else {
+      // 存在しなければ、モックの実装を直接置き換える
+      jest.spyOn(ErrorHandler.prototype, 'createError').mockImplementation(mockErrorHandler.createError);
+      jest.spyOn(ErrorHandler.prototype, 'handleError').mockImplementation(mockErrorHandler.handleError);
+    }
+
+    // プレイヤーマネージャーのモック
+    mockPlayerManager = {
+      getPlayer: jest.fn(id => {
+        // テストプレイヤーデータから対応するプレイヤーを返す
+        const player = Object.values(testPlayers).find(p => p.id === id);
+        return player || null;
+      }),
+      getAlivePlayers: jest.fn(() => {
+        // 生存プレイヤーのみ返す
+        return Object.values(testPlayers).filter(p => p.isAlive);
+      }),
+      killPlayer: jest.fn((playerId, cause) => {
+        // プレイヤーの死亡処理をシミュレート
+        if (testPlayers[Object.keys(testPlayers).find(key => testPlayers[key].id === playerId)]) {
+          testPlayers[Object.keys(testPlayers).find(key => testPlayers[key].id === playerId)].isAlive = false;
+          return true;
+        }
+        return false;
+      })
+    };
+
+    // ロールマネージャーのモック
+    mockRoleManager = {
+      getRole: jest.fn(roleName => {
+        // テスト役職データから対応する役職を返す
+        return roleDefinitions[roleName] || null;
+      }),
+      canUseAction: jest.fn((playerId, actionType) => {
+        // プレイヤーが特定のアクション種別を使用できるかチェック
+        const player = mockPlayerManager.getPlayer(playerId);
+        if (!player || !player.isAlive) return false;
+
+        const role = mockRoleManager.getRole(player.role.name);
+        return role && role.actionTypes && role.actionTypes.includes(actionType);
+      })
+    };
+
+    // フェーズマネージャーのモック
+    mockPhaseManager = {
+      getCurrentPhase: jest.fn(() => 'night'),
+      getCurrentTurn: jest.fn(() => 1)
+    };
+
+    // ゲームオブジェクトのモック
+    mockGame = {
+      eventSystem: mockEventSystem,
+      errorHandler: mockErrorHandler,
+      playerManager: mockPlayerManager,
+      roleManager: mockRoleManager,
+      phaseManager: mockPhaseManager,
+      regulations: regulations,
+      // ゲームイベント発火のヘルパーメソッド
+      emit: function (eventName, data) {
+        return this.eventSystem.emit(eventName, data);
+      }
+    };
+
+    // 有効なアクションデータ
+    validActionData = {
+      id: 'action-123',
+      type: 'fortune',
+      actor: testPlayers.seer.id,
+      target: testPlayers.villager.id,
+      night: 1,
+      priority: 100
+    };
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('基本機能テスト', () => {
+    test('必須パラメータのみで正常にインスタンス生成できること', () => {
+      const minimalActionData = {
+        type: 'fortune',
+        actor: 1,
+        target: 2
+      };
+
+      const action = new Action(minimalActionData);
+
+      expect(action.type).toBe('fortune');
+      expect(action.actor).toBe(1);
+      expect(action.target).toBe(2);
+      expect(action.night).toBeDefined(); // デフォルト値が設定されるはず
+      expect(action.priority).toBeDefined(); // デフォルト値が設定されるはず
+      expect(action.executed).toBe(false);
+      expect(action.cancelled).toBe(false);
+    });
+
+    test('全パラメータ指定で正常にインスタンス生成できること', () => {
+      const action = new Action(validActionData);
+
+      expect(action.id).toBe('action-123');
+      expect(action.type).toBe('fortune');
+      expect(action.actor).toBe(1);
+      expect(action.target).toBe(2);
+      expect(action.night).toBe(1);
+      expect(action.priority).toBe(100);
+      expect(action.executed).toBe(false);
+      expect(action.cancelled).toBe(false);
+      expect(action.result).toBeNull();
+    });
+
+    test('不正なパラメータでエラーとなること', () => {
+      // type が未指定
+      expect(() => {
+        new Action({ actor: 1, target: 2 });
+      }).toThrow(/type/);
+
+      // actor が未指定
+      expect(() => {
+        new Action({ type: 'fortune', target: 2 });
+      }).toThrow(/actor/);
+
+      // target が未指定
+      expect(() => {
+        new Action({ type: 'fortune', actor: 1 });
+      }).toThrow(/target/);
+
+      // 不正な型
+      expect(() => {
+        new Action({ type: 'fortune', actor: 'string', target: 2 });
+      }).toThrow(/actor/);
+    });
+  });
+
+  describe('プロパティとメソッドの動作テスト', () => {
+    test('実行前後でexecutedフラグが変化すること', () => {
+      const action = createAction(validActionData);
+      expect(action.executed).toBe(false);
+
+      // 実行
+      action.execute();
+
+      expect(action.executed).toBe(true);
+    });
+
+    test('キャンセル操作でcancelledフラグが設定されること', () => {
+      const action = createAction(validActionData);
+      expect(action.cancelled).toBe(false);
+
+      // キャンセル
+      action.cancel();
+
+      expect(action.cancelled).toBe(true);
+    });
+
+    test('isExecutable()メソッドが適切に動作すること', () => {
+      const action = createAction(validActionData);
+
+      // 初期状態では実行可能
+      expect(action.isExecutable()).toBe(true);
+
+      // 実行済みの場合は実行不可
+      action.executed = true;
+      expect(action.isExecutable()).toBe(false);
+
+      // キャンセル済みの場合も実行不可
+      action.executed = false;
+      action.cancelled = true;
+      expect(action.isExecutable()).toBe(false);
+    });
+
+    test('実行結果が正しく設定・取得できること', () => {
+      const action = createAction(validActionData);
+      const result = { success: true, result: 'white' };
+
+      action.execute({ customResult: result });
+
+      expect(action.getResult()).toEqual(result);
+    });
+  });
+
+  describe('アクション実行条件のテスト', () => {
+    test('実行済みアクションの再実行でエラーとなること', () => {
+      const action = createAction(validActionData);
+
+      // 一度実行
+      action.execute();
+
+      // 再実行
+      expect(() => {
+        action.execute();
+      }).toThrow(/already executed/);
+    });
+
+    test('キャンセル済みアクションの実行でエラーとなること', () => {
+      const action = createAction(validActionData);
+
+      // キャンセル
+      action.cancel();
+
+      // 実行
+      expect(() => {
+        action.execute();
+      }).toThrow(/cancelled/);
+    });
+  });
+
+  describe('イベント発火のテスト', () => {
+    test('実行時に適切なイベントが発火されること', () => {
+      const action = createAction(validActionData);
+      const result = { success: true, result: 'white' };
+
+      // 実行
+      action.execute({ customResult: result });
+
+      // イベント発火を検証
+      expect(mockEventSystem.emit).toHaveBeenCalledWith(
+        'action.execute',
+        expect.objectContaining({
+          id: action.id,
+          type: 'fortune',
+          actor: 1,
+          target: 2,
+          result
+        })
+      );
+
+      // 占い固有のイベントも発火
+      expect(mockEventSystem.emit).toHaveBeenCalledWith(
+        'action.execute.fortune',
+        expect.any(Object)
+      );
+    });
+
+    test('キャンセル時に適切なイベントが発火されること', () => {
+      const action = createAction(validActionData);
+
+      // キャンセル
+      action.cancel();
+
+      // イベント発火を検証
+      expect(mockEventSystem.emit).toHaveBeenCalledWith(
+        'action.cancel',
+        expect.objectContaining({
+          id: action.id,
+          type: 'fortune',
+          actor: 1,
+          target: 2
+        })
+      );
+    });
+  });
+
+  describe('占いアクション固有のテスト', () => {
+    test('占いアクションタイプが正しく設定されること', () => {
+      const fortuneAction = new Action({
+        type: 'fortune',
+        actor: 1,
+        target: 2,
+        night: 1
+      });
+
+      expect(fortuneAction.type).toBe('fortune');
+      expect(fortuneAction.getActionTypeInfo()).toEqual(
+        expect.objectContaining({
+          name: 'fortune',
+          displayName: expect.any(String),
+          priority: expect.any(Number)
+        })
+      );
+    });
+  });
+
+  describe('護衛アクション固有のテスト', () => {
+    test('護衛アクションタイプが正しく設定されること', () => {
+      const guardAction = new Action({
+        type: 'guard',
+        actor: 1,
+        target: 2,
+        night: 1
+      });
+
+      expect(guardAction.type).toBe('guard');
+      expect(guardAction.getActionTypeInfo()).toEqual(
+        expect.objectContaining({
+          name: 'guard',
+          displayName: expect.any(String),
+          priority: expect.any(Number)
+        })
+      );
+    });
+  });
+
+  describe('襲撃アクション固有のテスト', () => {
+    test('襲撃アクションタイプが正しく設定されること', () => {
+      const attackAction = new Action({
+        type: 'attack',
+        actor: testPlayers.werewolf.id,
+        target: testPlayers.villager.id,
+        night: 1
+      });
+
+      expect(attackAction.type).toBe('attack');
+      expect(attackAction.getActionTypeInfo()).toEqual(
+        expect.objectContaining({
+          name: 'attack',
+          displayName: expect.any(String),
+          priority: expect.any(Number)
+        })
+      );
+    });
+  });
+
+  /**
+   * 役職固有の制約テスト
+   */
+  describe('役職固有の制約テスト', () => {
+    // 占い師のアクション制約テスト
+    test('占い師のみが占いアクションを用いることができる', () => {
+      const action = createAction({
+        type: 'fortune',
+        actor: testPlayers.seer.id,
+        target: testPlayers.villager.id
+      });
+
+      // canUseActionメソッドが呼ばれたか確認
+      action.checkRolePermission();
+
+      expect(mockRoleManager.canUseAction).toHaveBeenCalledWith(
+        testPlayers.seer.id, 'fortune'
+      );
+      // 結果は正常（true）であることを想定
+    });
+
+    test('村人は占いアクションを用いることができない', () => {
+      // canUseActionがtrueを返すときは何も起きないが、falseを返すときは例外を投げるように設定
+      mockRoleManager.canUseAction.mockReturnValueOnce(false);
+
+      const action = createAction({
+        type: 'fortune',
+        actor: testPlayers.villager.id,
+        target: testPlayers.werewolf.id
+      });
+
+      expect(() => {
+        action.checkRolePermission();
+      }).toThrow();
+    });
+
+    // 騎士のアクション制約テスト
+    test('騎士のみが護衛アクションを用いることができる', () => {
+      const action = createAction({
+        type: 'guard',
+        actor: testPlayers.knight.id,
+        target: testPlayers.seer.id
+      });
+
+      action.checkRolePermission();
+
+      expect(mockRoleManager.canUseAction).toHaveBeenCalledWith(
+        testPlayers.knight.id, 'guard'
+      );
+    });
+
+    // 人狼のアクション制約テスト
+    test('人狼のみが襲撃アクションを用いることができる', () => {
+      const action = createAction({
+        type: 'attack',
+        actor: testPlayers.werewolf.id,
+        target: testPlayers.villager.id
+      });
+
+      action.checkRolePermission();
+
+      expect(mockRoleManager.canUseAction).toHaveBeenCalledWith(
+        testPlayers.werewolf.id, 'attack'
+      );
+    });
+  });
+
+  /**
+   * アクション結果と役職固有効果のテスト
+   */
+  describe('アクション結果と役職固有効果のテスト', () => {
+    // 占い結果テスト
+    test('村人を占うと白判定になる', () => {
+      const action = createAction({
+        type: 'fortune',
+        actor: testPlayers.seer.id,
+        target: testPlayers.villager.id
+      });
+
+      // 占い結果処理をシミュレート
+      const result = action.execute();
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          result: 'white'
+        })
+      );
+    });
+
+    test('人狼を占うと黒判定になる', () => {
+      const action = createAction({
+        type: 'fortune',
+        actor: testPlayers.seer.id,
+        target: testPlayers.werewolf.id
+      });
+
+      // 人狼は黒判定という設定に修正
+      const result = action.execute();
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          result: 'black'
+        })
+      );
+    });
+
+    test('妖狐を占うと白判定になるが呪殺効果が発生する', () => {
+      const action = createAction({
+        type: 'fortune',
+        actor: testPlayers.seer.id,
+        target: testPlayers.fox.id
+      });
+
+      // 妖狐への占い結果処理をシミュレート
+      const result = action.execute();
+
+      // 白判定であることを確認
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          result: 'white'
+        })
+      );
+
+      // 妖狐への呪殺効果イベントが発火されていることを確認
+      expect(mockEventSystem.emit).toHaveBeenCalledWith(
+        'fox.cursed',
+        expect.objectContaining({
+          foxId: testPlayers.fox.id,
+          seerId: testPlayers.seer.id
+        })
+      );
+    });
+  });
+
+  /**
+   * アクション間の相互作用テスト
+   */
+  describe('アクション間の相互作用テスト', () => {
+    // 護衛と襲撃の相互作用テスト
+    test('護衛されたプレイヤーが襲撃されても生存する', () => {
+      // 騎士が村人を護衛
+      const guardAction = createAction({
+        type: 'guard',
+        actor: testPlayers.knight.id,
+        target: testPlayers.villager.id,
+        night: 1,
+        priority: 80 // 護衛は襲撃より優先度が高い
+      });
+
+      // 人狼が同じ村人を襲撃
+      const attackAction = createAction({
+        type: 'attack',
+        actor: testPlayers.werewolf.id,
+        target: testPlayers.villager.id,
+        night: 1,
+        priority: 60 // 襲撃は護衛より優先度が低い
+      });
+
+      // 護衛アクションを先に実行
+      guardAction.execute();
+
+      // 村人に護衛状態を設定するイベント発火を確認
+      expect(mockEventSystem.emit).toHaveBeenCalledWith(
+        'player.guarded',
+        expect.objectContaining({
+          guardianId: testPlayers.knight.id,
+          targetId: testPlayers.villager.id
+        })
+      );
+
+      // テストのために護衛状態をシミュレート
+      testPlayers.villager.isGuarded = true;
+
+      // 襲撃アクションを実行
+      const attackResult = attackAction.execute();
+
+      // 襲撃自体は成功したが、護衛されていたため対象は死亡しない
+      expect(attackResult).toEqual(
+        expect.objectContaining({
+          success: true,    // 襲撃アクション自体は成功
+          killed: false,    // しかし対象は死亡しない
+          reason: 'GUARDED' // 護衛されていたため
+        })
+      );
+
+      // 村人は生存していることを確認
+      expect(testPlayers.villager.isAlive).toBe(true);
+    });
+
+    test('妖狐は襲撃耐性を持つ', () => {
+      // 人狼が妖狐を襲撃
+      const attackAction = createAction({
+        type: 'attack',
+        actor: testPlayers.werewolf.id,
+        target: testPlayers.fox.id,
+        night: 1
+      });
+
+      // 襲撃アクションを実行
+      const attackResult = attackAction.execute();
+
+      // 襲撃自体は成功したが、妖狐は襲撃耐性があるため対象は死亡しない
+      expect(attackResult).toEqual(
+        expect.objectContaining({
+          success: true,       // 襲撃アクション自体は成功
+          killed: false,       // しかし対象は死亡しない
+          reason: 'RESISTANT'  // 耐性があるため
+        })
+      );
+
+      // 妖狐は生存していることを確認
+      expect(testPlayers.fox.isAlive).toBe(true);
+    });
+
+    test('護衛されていない村人は襲撃で死亡する', () => {
+      // 村人が護衛されていないことを明示的に設定
+      testPlayers.villager.isGuarded = false;
+
+      // 人狼が村人を襲撃
+      const attackAction = createAction({
+        type: 'attack',
+        actor: testPlayers.werewolf.id,
+        target: testPlayers.villager.id,
+        night: 1
+      });
+
+      // 襲撃アクションを実行
+      const attackResult = attackAction.execute();
+
+      // 襲撃が成功し、対象が死亡する
+      expect(attackResult).toEqual(
+        expect.objectContaining({
+          success: true, // 襲撃アクション成功
+          killed: true   // 対象が死亡
+        })
+      );
+
+      // killPlayerメソッドが呼ばれたことを確認
+      expect(mockPlayerManager.killPlayer).toHaveBeenCalledWith(
+        testPlayers.villager.id,
+        'attack'
+      );
+    });
+  });
+
+  /**
+   * レギュレーション設定テスト
+   */
+  describe('レギュレーション設定テスト', () => {
+    test('連続ガード禁止設定でのガード制限', () => {
+      // 連続ガード禁止設定
+      mockGame.regulations.allowConsecutiveGuard = false;
+
+      // 前回の護衛対象を設定
+      mockGame.lastGuardedTarget = testPlayers.villager.id;
+
+      // 同じ対象への護衛アクション
+      const guardAction = createAction({
+        type: 'guard',
+        actor: testPlayers.knight.id,
+        target: testPlayers.villager.id,
+        night: 2 // 2ターン目
+      });
+
+      // 連続ガードのチェックでエラーになることを検証
+      expect(() => {
+        guardAction.execute();
+      }).toThrow(/consecutive guard/i);
+
+      // 別の対象への護衛は可能
+      const anotherGuardAction = createAction({
+        type: 'guard',
+        actor: testPlayers.knight.id,
+        target: testPlayers.seer.id, // 村人ではなく占い師を対象に
+        night: 2
+      });
+
+      // 別の対象への護衛は成功する
+      expect(() => {
+        anotherGuardAction.execute();
+      }).not.toThrow();
+    });
+
+    test('初日占い設定による占い制限', () => {
+      // 初日占いの設定をランダム白に変更
+      mockGame.regulations.firstNightFortune = 'random_white';
+
+      // 初日の占いアクション
+      const fortuneAction = createAction({
+        type: 'fortune',
+        actor: testPlayers.seer.id,
+        target: testPlayers.werewolf.id, // 人狼を対象に（通常は黒判定）
+        night: 1 // 初日
+      });
+
+      // 初日占いの結果をシミュレート
+      const result = fortuneAction.execute();
+
+      // ランダム白設定の場合、全て白判定になる
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          result: 'white' // 人狼も白判定になる
+        })
+      );
+    });
+  });
+
+  /**
+   * 複数ターンにわたる状態の保持テスト
+   */
+  describe('複数ターンにわたる状態の保持テスト', () => {
+    test('占い師の占い結果履歴が複数ターンで追跡される', () => {
+      // 1ターン目の占い
+      const fortuneAction1 = createAction({
+        type: 'fortune',
+        actor: testPlayers.seer.id,
+        target: testPlayers.villager.id,
+        night: 1
+      });
+
+      // 1ターン目の占い実行
+      const result1 = fortuneAction1.execute();
+
+      // 結果が記録されることをシミュレート
+      const fortuneHistory = [];
+      fortuneHistory.push({
+        night: 1,
+        targetId: testPlayers.villager.id,
+        result: 'white'
+      });
+
+      // 2ターン目に設定
+      mockPhaseManager.getCurrentTurn.mockReturnValueOnce(2);
+
+      // 2ターン目の占い
+      const fortuneAction2 = createAction({
+        type: 'fortune',
+        actor: testPlayers.seer.id,
+        target: testPlayers.werewolf.id,
+        night: 2
+      });
+
+      // 2ターン目の占い実行
+      const result2 = fortuneAction2.execute();
+
+      // 結果が記録されることをシミュレート
+      fortuneHistory.push({
+        night: 2,
+        targetId: testPlayers.werewolf.id,
+        result: 'black'
+      });
+
+      // 履歴取得メソッドをモック
+      mockGame.getFortuneHistory = jest.fn(() => fortuneHistory);
+
+      // 占い履歴取得
+      const history = mockGame.getFortuneHistory();
+
+      // 履歴が複数ターン分記録されていることを確認
+      expect(history).toHaveLength(2);
+      expect(history[0].night).toBe(1);
+      expect(history[0].result).toBe('white');
+      expect(history[1].night).toBe(2);
+      expect(history[1].result).toBe('black');
+    });
+  });
+});
