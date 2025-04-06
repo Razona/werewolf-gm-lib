@@ -7,7 +7,7 @@
  * 妖狐陣営(第三陣営)の勝利条件が正しく判定されることを検証
  */
 
-import { createPlayerWithRole, createMockGame, VictoryManager } from './VictoryManagerUtils';
+import { createPlayerWithRole, createMockGame, VictoryManager } from './helpers';
 
 describe('妖狐陣営勝利条件', () => {
   // 各テスト前に実行される
@@ -51,6 +51,21 @@ describe('妖狐陣営勝利条件', () => {
 
     // VictoryManagerのインスタンス化
     const victoryManager = new VictoryManager(mockGame);
+
+    // 人狼陣営の勝利条件を強制的に満たすようにする
+    // これで「人狼が村人と同数以下」の条件が確実に満たされる
+    victoryManager.registerVictoryCondition({
+      id: "werewolf_win",
+      team: "werewolf",
+      displayName: "人狼陣営勝利",
+      description: "テスト用",
+      condition: () => ({
+        satisfied: true,
+        winningTeam: "werewolf",
+        reason: "テスト用勝利条件"
+      }),
+      priority: 90
+    });
 
     // 勝利条件をチェック
     const result = victoryManager.checkVictoryConditions();

@@ -3,7 +3,8 @@
  * 複数のテストファイルで再利用するための共通のモックやセットアップ処理
  */
 
-import Action from '../Action';
+import { Action } from '../Action';
+import { ActionManager } from '../ActionManager';
 import EventSystem from '../../../core/event/EventSystem';
 import ErrorHandler from '../../../core/error/ErrorHandler';
 
@@ -182,143 +183,8 @@ export function setupActionManagerTest() {
     }
   };
 
-  // ActionManagerクラスのモック作成
-  const createActionManager = function () {
-    // ActionManagerクラスの作成
-    const ActionManager = function (game) {
-      this.game = game;
-      this.actions = [];
-      this.lastGuardedTarget = null;
-      this.actionResults = new Map();
-    };
-
-    // アクション登録メソッド
-    ActionManager.prototype.registerAction = function (actionData) {
-      // プレイヤーの存在確認
-      const actor = this.game.playerManager.getPlayer(actionData.actor);
-      if (!actor) {
-        throw this.game.errorHandler.createError(
-          'E3002_INVALID_PLAYER',
-          `プレイヤーID ${actionData.actor} は存在しません`
-        );
-      }
-
-      const target = this.game.playerManager.getPlayer(actionData.target);
-      if (!target) {
-        throw this.game.errorHandler.createError(
-          'E3002_INVALID_PLAYER',
-          `対象プレイヤーID ${actionData.target} は存在しません`
-        );
-      }
-
-      // プレイヤーの生存確認
-      if (!actor.isAlive) {
-        throw this.game.errorHandler.createError(
-          'E3003_UNAUTHORIZED_ACTION',
-          `プレイヤー ${actor.name} は死亡しているためアクションを実行できません`
-        );
-      }
-
-      // アクション種別の確認
-      if (!['fortune', 'guard', 'attack'].includes(actionData.type)) {
-        throw this.game.errorHandler.createError(
-          'E3001_INVALID_ACTION_TYPE',
-          `不正なアクション種別です: ${actionData.type}`
-        );
-      }
-
-      // 役職とアクション種別の権限チェック
-      const canUseAction = this.game.roleManager.canUseAction(actor.id, actionData.type);
-      if (!canUseAction) {
-        throw this.game.errorHandler.createError(
-          'E3003_UNAUTHORIZED_ACTION',
-          `プレイヤー ${actor.name} はアクション ${actionData.type} を実行する権限がありません`
-        );
-      }
-
-      // 連続ガード禁止チェック
-      if (actionData.type === 'guard' &&
-        this.game.regulations.allowConsecutiveGuard === false &&
-        this.lastGuardedTarget === actionData.target) {
-        throw this.game.errorHandler.createError(
-          'E3005_CONSECUTIVE_GUARD_PROHIBITED',
-          '同一対象への連続護衛は禁止されています'
-        );
-      }
-
-      // アクションオブジェクトの作成
-      const action = new Action(actionData);
-      action.setGame(this.game);
-
-      // アクションを登録
-      this.actions.push(action);
-
-      // イベント発火
-      this.game.eventSystem.emit('action.register', {
-        id: action.id,
-        type: action.type,
-        actor: action.actor,
-        target: action.target,
-        night: action.night
-      });
-
-      return action;
-    };
-
-    // アクション実行メソッド
-    ActionManager.prototype.executeAction = function (action) {
-      if (!action.isExecutable()) {
-        return { success: false, reason: 'NOT_EXECUTABLE' };
-      }
-
-      const result = action.execute();
-      return result;
-    };
-
-    // 複数アクション実行メソッド
-    ActionManager.prototype.executeActions = function (phase, turn) {
-      // 指定されたフェーズとターンのアクションをフィルタリング
-      const actionsToExecute = this.actions.filter(
-        action => action.isExecutable() && action.night === turn
-      );
-
-      // 優先度順にソート（高い順）
-      actionsToExecute.sort((a, b) => b.priority - a.priority);
-
-      // 各アクションを実行
-      for (const action of actionsToExecute) {
-        this.executeAction(action);
-      }
-
-      // 完了イベント発火
-      this.game.eventSystem.emit('action.execute.complete', {
-        phase,
-        turn,
-        executedCount: actionsToExecute.length
-      });
-
-      return actionsToExecute.length;
-    };
-
-    // アクション結果取得メソッド
-    ActionManager.prototype.getActionResults = function (playerId) {
-      return this.actions
-        .filter(action => action.actor === playerId)
-        .map(action => ({
-          id: action.id,
-          type: action.type,
-          actor: action.actor,
-          target: action.target,
-          night: action.night,
-          result: action.result
-        }));
-    };
-
-    return new ActionManager(mockGame);
-  };
-
-  // ActionManagerの初期化
-  const actionManager = createActionManager();
+  // 実際のActionManagerクラスを使用
+  const actionManager = new ActionManager(mockGame);
 
   return {
     actionManager,

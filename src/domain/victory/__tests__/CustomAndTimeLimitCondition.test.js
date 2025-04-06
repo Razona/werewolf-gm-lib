@@ -7,7 +7,7 @@
  * カスタム勝利条件の登録・判定と時間制限による強制終了ロジックのテスト
  */
 
-import { createPlayerWithRole, createMockGame, VictoryManager } from './VictoryManagerUtils';
+import { createPlayerWithRole, createMockGame, VictoryManager } from './helpers';
 
 describe('カスタム勝利条件', () => {
   // 各テスト前に実行される

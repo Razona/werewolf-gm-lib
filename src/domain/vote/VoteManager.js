@@ -240,7 +240,7 @@ export default class VoteManager {
     // 投票者の投票の重みを取得
     const voteStrength = this.getVoteStrength(voterId);
     console.log(`Creating vote with strength ${voteStrength} for voter ${voterId}`);
-    
+
     // 投票オブジェクトの作成
     const vote = new Vote({
       voterId,
@@ -463,7 +463,7 @@ export default class VoteManager {
     const role = player.role;
 
     // デバッグ出力
-    console.log(`getVoteStrength for player ${playerId} with role ${role ? role.name : 'unknown'}`); 
+    console.log(`getVoteStrength for player ${playerId} with role ${role ? role.name : 'unknown'}`);
 
     // 村長役職は2票分の価値がある
     if (role && role.name === 'mayor') {

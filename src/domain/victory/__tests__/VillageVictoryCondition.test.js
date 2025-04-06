@@ -7,7 +7,7 @@
  * 村人陣営の勝利条件が正しく判定されることを検証
  */
 
-import { createPlayerWithRole, createMockGame, VictoryManager } from './VictoryManagerUtils';
+import { createPlayerWithRole, createMockGame, VictoryManager } from './helpers';
 
 describe('村人陣営勝利条件', () => {
   // 各テスト前に実行される

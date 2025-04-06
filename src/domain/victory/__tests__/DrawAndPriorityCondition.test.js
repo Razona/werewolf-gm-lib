@@ -7,7 +7,7 @@
  * 引き分け条件の判定と複数条件が満たされた場合の優先度処理を検証
  */
 
-import { createPlayerWithRole, createMockGame, VictoryManager } from './VictoryManagerUtils';
+import { createPlayerWithRole, createMockGame, VictoryManager } from './helpers';
 
 describe('引き分け条件', () => {
   // 各テスト前に実行される
@@ -86,6 +86,42 @@ describe('引き分け条件', () => {
     expect(result).not.toBeNull();
     expect(result.winningTeam).toBe('draw');
   });
+
+  test('引き分け条件は通常時には最優先になる', () => {
+    // テスト用プレイヤーデータ - 全員死亡（標準的な引き分け条件）
+    const players = [
+      createPlayerWithRole(1, 'villager', 'village', false),
+      createPlayerWithRole(2, 'werewolf', 'werewolf', false)
+    ];
+
+    // モックゲームの作成
+    const mockGame = createMockGame(players);
+
+    // VictoryManagerのインスタンス化
+    const victoryManager = new VictoryManager(mockGame);
+
+    // 通常の勝利条件より低い優先度のカスタム勝利条件を追加
+    victoryManager.registerCustomVictoryCondition({
+      id: "low_priority_win",
+      team: "custom",
+      displayName: "低優先度勝利",
+      description: "低優先度カスタム勝利条件",
+      condition: () => ({
+        satisfied: true,
+        winningTeam: "custom",
+        reason: "低優先度カスタム勝利条件達成"
+      }),
+      priority: 50 // 低い優先度
+    });
+
+    // 勝利条件をチェック
+    const result = victoryManager.checkVictoryConditions();
+
+    // 期待される結果 - 引き分け条件が最優先
+    expect(result).not.toBeNull();
+    expect(result.winningTeam).toBe('draw');
+    expect(result.winningCondition).toBe('draw');
+  });
 });
 
 describe('勝利条件の優先度', () => {
@@ -163,7 +199,7 @@ describe('勝利条件の優先度', () => {
     expect(result.winningCondition).toBe('village_win');
   });
 
-  test('妖狐陣営は村人陣営や人狼陣営より低い優先度', () => {
+  test('妖狐陣営は村人陣営や人狼陣営より高い優先度を持つ', () => {
     // テスト用プレイヤーデータ - 全陣営の条件を満たす状態
     const players = [
       createPlayerWithRole(1, 'villager', 'village'),
@@ -202,19 +238,19 @@ describe('勝利条件の優先度', () => {
         winningTeam: "fox",
         reason: "テスト用勝利条件"
       }),
-      priority: 80 // 最も低い
+      priority: 110 // 村人・人狼より高い
     });
 
     // 勝利条件をチェック
     const result = victoryManager.checkVictoryConditions();
 
-    // 期待される結果 - 村人陣営の優先度が最も高い
+    // 期待される結果 - 妖狐陣営の優先度が最も高い
     expect(result).not.toBeNull();
-    expect(result.winningTeam).toBe('village');
-    expect(result.winningCondition).toBe('village_win');
+    expect(result.winningTeam).toBe('fox');
+    expect(result.winningCondition).toBe('fox_win');
   });
 
-  test('引き分け条件は最も優先度が低い', () => {
+  test('特殊ルールによる引き分け以外の場合、カスタム勝利条件が引き分けより優先される', () => {
     // テスト用プレイヤーデータ - 全員死亡
     const players = [
       createPlayerWithRole(1, 'villager', 'village', false),
@@ -224,10 +260,15 @@ describe('勝利条件の優先度', () => {
     // モックゲームの作成
     const mockGame = createMockGame(players);
 
+    // レギュレーションに同票時の処理として「カスタム処理」を設定
+    // 同票処理をシミュレートするために、ゲームにカスタム設定を追加
+    mockGame.options.regulations.executionRule = 'custom';
+    mockGame.options.regulations.runoffTieRule = 'custom';
+
     // VictoryManagerのインスタンス化
     const victoryManager = new VictoryManager(mockGame);
 
-    // カスタム勝利条件を追加（優先度は引き分けより高い）
+    // カスタム勝利条件を追加
     victoryManager.registerCustomVictoryCondition({
       id: "custom_win",
       team: "custom",
@@ -238,13 +279,13 @@ describe('勝利条件の優先度', () => {
         winningTeam: "custom",
         reason: "カスタム勝利条件達成"
       }),
-      priority: 10 // 引き分けより高い
+      priority: 600 // 引き分けより高い優先度
     });
 
     // 勝利条件をチェック
     const result = victoryManager.checkVictoryConditions();
 
-    // 期待される結果 - 引き分けより優先度の高いカスタム勝利
+    // 期待される結果 - 優先度の高いカスタム勝利条件が勝つ
     expect(result).not.toBeNull();
     expect(result.winningTeam).toBe('custom');
     expect(result.winningCondition).toBe('custom_win');

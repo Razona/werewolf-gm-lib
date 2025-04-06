@@ -8,6 +8,7 @@
     "build": "rimraf dist && tsc -p tsconfig.json",
     "clean": "rimraf dist",
     "test": "jest",
+    "test:all": "jest --config jest.config.js __tests__ --coverage",
     "test:unit": "jest --config jest.config.js __tests__/unit/core/error",
     "test:player": "jest --roots=__tests__ __tests__/unit/domain/player --coverage=false",
     "prepare": "npm run build",
@@ -16,7 +17,7 @@
     "test:phase:coverage": "jest --config jest.config.js src/domain/phase/__tests__/PhaseManager.test.js --coverage",
     "test:action": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/action/__tests__",
     "test:vote": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/vote/__tests__",
-    "test:action:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js src/domain/action/__tests__/Action.test.js --coverage",
+    "test:action:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js src/domain/action/__tests__/ --coverage",
     "test:victory": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/victory/__tests__"
   },
   "directories": {

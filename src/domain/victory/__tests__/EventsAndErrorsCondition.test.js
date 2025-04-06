@@ -7,7 +7,7 @@
  * 勝利条件判定に関連するイベント発火やエラー処理を検証
  */
 
-import { createPlayerWithRole, createMockGame, VictoryManager } from './VictoryManagerUtils';
+import { createPlayerWithRole, createMockGame, VictoryManager } from './helpers';
 
 describe('イベント発火', () => {
   // 各テスト前に実行される
