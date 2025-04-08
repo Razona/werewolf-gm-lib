@@ -5,7 +5,7 @@
  * enabling communication between different modules through events.
  */
 
-class EventSystem {
+export class EventSystem {
   /**
    * Creates a new EventSystem instance
    * @param {Object} options - Configuration options
@@ -20,7 +20,7 @@ class EventSystem {
     this.options = {
       enableNamespaces: true,
       debugMode: false,
-      enableWildcards: false, 
+      enableWildcards: false,
       historyLimit: 100,
       shareOnceListeners: false,
       ...options
@@ -41,7 +41,7 @@ class EventSystem {
     // Queue for listeners to be added/removed during emission
     this._pendingAdditions = [];
     this._pendingRemovals = [];
-    
+
     // Current event being processed (for once listeners)
     this._currentEventName = null;
   }
@@ -110,7 +110,7 @@ class EventSystem {
     if (typeof callback !== 'function') {
       throw new Error('Callback must be a function');
     }
-    
+
     // Handle shared once listeners (common between events)
     if (this.options.shareOnceListeners) {
       // Track which events this callback is registered for
@@ -125,7 +125,7 @@ class EventSystem {
     const wrappedCallback = (...args) => {
       // First remove the listener to prevent recursion
       this.off(eventName, wrappedCallback);
-      
+
       // If using shared once listeners, remove all instances of this callback
       if (this.options.shareOnceListeners && this._sharedOnceCallbacks.has(callback)) {
         const events = this._sharedOnceCallbacks.get(callback);
@@ -137,11 +137,11 @@ class EventSystem {
         // Clear tracking
         this._sharedOnceCallbacks.delete(callback);
       }
-      
+
       // Now call the original callback
       return callback.apply(this, args);
     };
-    
+
     // Store a reference to the original callback
     wrappedCallback._originalCallback = callback;
 
@@ -203,39 +203,39 @@ class EventSystem {
           }
         }
       }
-      
+
       this.listeners.delete(eventName);
       return this;
     }
 
     // Otherwise, only remove the specific callback
     const listeners = this.listeners.get(eventName);
-    
+
     // Check if we're looking for a wrapped callback (once listener)
     let originalCallback = null;
     const isWrappedCallback = callback._originalCallback !== undefined;
     if (isWrappedCallback) {
       originalCallback = callback._originalCallback;
     }
-    
+
     // Filter out the callback or its wrapper
     const filteredListeners = listeners.filter(listener => {
       // Direct match
       if (listener.callback === callback) {
         return false;
       }
-      
+
       // Match based on original callback for once listeners
-      if (isWrappedCallback && listener.once && 
-          listener.callback._originalCallback === originalCallback) {
+      if (isWrappedCallback && listener.once &&
+        listener.callback._originalCallback === originalCallback) {
         return false;
       }
-      
+
       // If the callback is an original one, check wrapped callbacks
       if (listener.once && listener.callback._originalCallback === callback) {
         return false;
       }
-      
+
       return true;
     });
 
@@ -246,12 +246,12 @@ class EventSystem {
       // Otherwise, update the listeners array
       this.listeners.set(eventName, filteredListeners);
     }
-    
+
     // Update shared once callback tracking if appropriate
     if (this.options.shareOnceListeners) {
       // Find the original callback
       const target = originalCallback || callback;
-      
+
       if (this._sharedOnceCallbacks.has(target)) {
         const events = this._sharedOnceCallbacks.get(target);
         events.delete(eventName);
@@ -274,14 +274,14 @@ class EventSystem {
     // Mark that we're emitting an event
     const wasEmitting = this._emitting;
     this._emitting = true;
-    
+
     // Save previous event name
     const previousEventName = this._currentEventName;
     this._currentEventName = eventName;
 
     // Track whether any listeners were called
     let listenersCalled = false;
-    
+
     // Track callbacks that need to be removed from all events (shareOnceListeners mode)
     const sharedCallbacksToRemove = new Set();
 
@@ -293,25 +293,25 @@ class EventSystem {
 
       // Get all event names to emit based on the options
       const eventNamesToEmit = this._getEventNamesForEmission(eventName);
-      
+
       // Track listeners to remove after all are executed
       const listenersToRemove = [];
 
       // Emit to each matched event name
       for (const name of eventNamesToEmit) {
         if (!this.listeners.has(name)) continue;
-        
+
         // Clone the listeners array to avoid issues if modified during iteration
         const listeners = [...this.listeners.get(name)];
 
         // Call each listener
         for (const listener of listeners) {
           const { callback, once } = listener;
-          
+
           // If using shared once listeners and this callback is marked for removal, skip it
-          if (this.options.shareOnceListeners && once && 
-              callback._originalCallback && 
-              sharedCallbacksToRemove.has(callback._originalCallback)) {
+          if (this.options.shareOnceListeners && once &&
+            callback._originalCallback &&
+            sharedCallbacksToRemove.has(callback._originalCallback)) {
             listenersToRemove.push({ name, callback });
             continue;
           }
@@ -324,7 +324,7 @@ class EventSystem {
             // If it's a once listener, mark for removal
             if (once) {
               listenersToRemove.push({ name, callback });
-              
+
               // If shared once listeners is enabled, track the original callback
               if (this.options.shareOnceListeners && callback._originalCallback) {
                 sharedCallbacksToRemove.add(callback._originalCallback);
@@ -342,7 +342,7 @@ class EventSystem {
         if (this.listeners.has(name)) {
           const listeners = this.listeners.get(name);
           const updatedListeners = listeners.filter(l => l.callback !== callback);
-          
+
           if (updatedListeners.length === 0) {
             this.listeners.delete(name);
           } else {
@@ -350,7 +350,7 @@ class EventSystem {
           }
         }
       }
-      
+
       // If using shared once listeners, remove all instances of callbacks that were executed
       if (this.options.shareOnceListeners && sharedCallbacksToRemove.size > 0) {
         for (const originalCallback of sharedCallbacksToRemove) {
@@ -359,10 +359,10 @@ class EventSystem {
             for (const eventName of events) {
               if (this.listeners.has(eventName)) {
                 const listeners = this.listeners.get(eventName);
-                const updated = listeners.filter(listener => 
-                  !(listener.once && 
+                const updated = listeners.filter(listener =>
+                  !(listener.once &&
                     listener.callback._originalCallback === originalCallback));
-                
+
                 if (updated.length === 0) {
                   this.listeners.delete(eventName);
                 } else {
@@ -385,7 +385,7 @@ class EventSystem {
     } finally {
       // Restore the previous event name
       this._currentEventName = previousEventName;
-      
+
       // Only reset the emitting flag if we're the outermost emit call
       if (!wasEmitting) {
         this._emitting = false;
@@ -409,10 +409,10 @@ class EventSystem {
       // 最適化: 最大チェック数を制限
       let checked = 0;
       const maxToCheck = 100;
-      
+
       for (const [name, listeners] of this.listeners.entries()) {
         if (++checked > maxToCheck) break;
-        
+
         if (listeners.length > 0 && name.includes('*') && this._matchesWildcard(name, eventName)) {
           return true;
         }
@@ -440,10 +440,10 @@ class EventSystem {
       // 最適化: 最大チェック数を制限
       let checked = 0;
       const maxToCheck = 100;
-      
+
       for (const [name, listeners] of this.listeners.entries()) {
         if (++checked > maxToCheck) break;
-        
+
         if (name !== eventName && name.includes('*') && this._matchesWildcard(name, eventName)) {
           count += listeners.length;
         }
@@ -492,14 +492,14 @@ class EventSystem {
   _processPendingOperations() {
     // 最適化: 大量のペンディング操作がある場合のガード
     const maxOperations = 1000;
-    
+
     // Process removals first to avoid issues with additions that would be immediately removed
     const removalsToProcess = Math.min(this._pendingRemovals.length, maxOperations);
     for (let i = 0; i < removalsToProcess; i++) {
       const { eventName, callback } = this._pendingRemovals[i];
       this.off(eventName, callback);
     }
-    
+
     // 処理した分だけ配列から削除
     if (removalsToProcess === this._pendingRemovals.length) {
       this._pendingRemovals = [];
@@ -517,7 +517,7 @@ class EventSystem {
         this.on(eventName, callback, priority);
       }
     }
-    
+
     // 処理した分だけ配列から削除
     if (additionsToProcess === this._pendingAdditions.length) {
       this._pendingAdditions = [];
@@ -571,19 +571,19 @@ class EventSystem {
       // 最適化: リスナーの数が多すぎる場合は制限する
       const maxListenersToCheck = 100;
       let checkedCount = 0;
-      
+
       for (const name of this.listeners.keys()) {
         // ワイルドカード文字を含む場合のみチェック
         if (!name.includes('*')) continue;
-        
+
         // 処理済みのイベント名はスキップ
         if (eventNames.includes(name)) continue;
-        
+
         // 最大制限に達したら停止
         if (++checkedCount > maxListenersToCheck) {
           break;
         }
-        
+
         // ワイルドカードパターンの簡易チェック
         if (this._matchesWildcard(name, eventName)) {
           eventNames.push(name);
@@ -624,7 +624,7 @@ class EventSystem {
     // 複数階層のワイルドカード (**) の処理
     if (pattern.includes('**')) {
       const parts = pattern.split('**');
-      
+
       // 最適化: 最大2つのパートのみをサポート
       if (parts.length > 2) {
         return false;
@@ -651,11 +651,11 @@ class EventSystem {
       // 正規表現を使わない最適化された方法
       const patternParts = pattern.split('.');
       const eventParts = eventName.split('.');
-      
+
       if (patternParts.length !== eventParts.length) {
         return false;
       }
-      
+
       for (let i = 0; i < patternParts.length; i++) {
         if (patternParts[i] === '*') {
           continue; // ワイルドカードは何にもマッチする
@@ -670,5 +670,3 @@ class EventSystem {
     return false;
   }
 }
-
-module.exports = EventSystem;

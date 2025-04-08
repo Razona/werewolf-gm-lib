@@ -68,7 +68,7 @@ class ErrorHandler {
   register(errorCode, context = {}, message) {
     // カスタムメッセージがない場合はエラーコードを使用
     const errorMessage = message || `エラー: ${errorCode}`;
-    
+
     // エラーオブジェクトを作成
     const error = {
       code: errorCode,
@@ -77,7 +77,7 @@ class ErrorHandler {
       level: ErrorLevel.ERROR, // デフォルトレベル
       timestamp: Date.now()
     };
-    
+
     return error;
   }
 }

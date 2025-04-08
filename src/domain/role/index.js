@@ -15,3 +15,6 @@ export { Mason } from './Mason';
 export { Medium } from './Medium';
 export { Seer } from './Seer';
 export { Villager } from './Villager';
+
+// 役職管理
+export { default as RoleManager } from './RoleManager';

@@ -13,6 +13,7 @@
     "test:player": "jest --roots=__tests__ __tests__/unit/domain/player --coverage=false",
     "prepare": "npm run build",
     "test:roles": "jest src/domain/role/__tests__",
+    "test:roles:coverage": "jest --config jest.config.js src/domain/role/__tests__ --coverage",
     "test:phase": "jest src/domain/phase/__tests__/PhaseManager.test.js",
     "test:phase:coverage": "jest --config jest.config.js src/domain/phase/__tests__/PhaseManager.test.js --coverage",
     "test:action": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/action/__tests__",

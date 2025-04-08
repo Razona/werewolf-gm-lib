@@ -7,7 +7,7 @@ class Role {
     this.isAlive = true;
     this.team = 'village';
     this.actions = []; // 空の配列として初期化
-    
+
     // デフォルトのメタデータ
     this.metadata = {
       description: "すべての役職の基底クラスです",
@@ -57,16 +57,16 @@ class Role {
   }
 
   // デフォルトのライフサイクルメソッド（何もしない）
-  onGameStart() {}
-  onPhaseStart() {}
-  onPhaseEnd() {}
-  onTurnEnd() {}
+  onGameStart() { }
+  onPhaseStart() { }
+  onPhaseEnd() { }
+  onTurnEnd() { }
 
   // デフォルトの死亡処理
   onDeath(cause) {
     // デフォルトの死因リスト
     const validCauses = ['test', 'execution', 'attack', 'curse', 'suicide', 'special', 'fox_death'];
-    
+
     // 死因のバリデーション（テストケースのために'test'を追加）
     if (!validCauses.includes(cause)) {
       throw new Error('無効な死因です');
@@ -107,8 +107,24 @@ class Role {
       displayName: '不明'
     };
   }
+
+  // 役職の状態更新（必要に応じて子クラスでオーバーライド）
+  updateState(stateChanges) {
+    if (!stateChanges || typeof stateChanges !== 'object') {
+      return false;
+    }
+
+    // 状態変更を適用
+    Object.assign(this, stateChanges);
+    return true;
+  }
+
+  // 参照の設定（役職間の相互参照用）
+  setReference(refName, value) {
+    this[refName] = value;
+    return true;
+  }
 }
 
-module.exports = {
-  Role
-};
+// CommonJS形式から ES6形式に変更
+export { Role };
