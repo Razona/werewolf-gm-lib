@@ -1,41 +1,22 @@
 /**
- * EventSystem モックファイル
+ * EventSystem モック
  */
 
-// Jestのモック関数を作成
-const mockEmit = jest.fn();
-const mockOn = jest.fn();
-const mockOff = jest.fn();
-const mockOnce = jest.fn();
-
-// モック関数を持つクラス
-class EventSystem {
-  constructor() {
-    this.emit = mockEmit;
-    this.on = mockOn;
-    this.off = mockOff;
-    this.once = mockOnce;
-  }
-}
-
-// テストで参照できるように、モック関数を静的プロパティとして追加
-EventSystem.mockEmit = mockEmit;
-EventSystem.mockOn = mockOn;
-EventSystem.mockOff = mockOff;
-EventSystem.mockOnce = mockOnce;
-
-// モックの実装をjest.mock()で直接設定するための関数
-const mockImplementation = jest.fn(() => {
+// EventSystem クラスのモック
+const EventSystem = jest.fn().mockImplementation((options = {}) => {
   return {
-    emit: mockEmit,
-    on: mockOn,
-    off: mockOff,
-    once: mockOnce
+    options,
+    listeners: new Map(),
+    on: jest.fn().mockReturnThis(),
+    off: jest.fn().mockReturnThis(),
+    once: jest.fn().mockReturnThis(),
+    emit: jest.fn().mockReturnValue(true),
+    hasListeners: jest.fn().mockReturnValue(true),
+    listenerCount: jest.fn().mockReturnValue(0),
+    eventNames: jest.fn().mockReturnValue([]),
+    getEventHistory: jest.fn().mockReturnValue([]),
+    removeAllListeners: jest.fn().mockReturnThis()
   };
 });
 
-// mockImplementation関数を静的メソッドとして追加
-EventSystem.mockImplementation = mockImplementation;
-
-// ES6形式のexport
-export { EventSystem };
+module.exports = { EventSystem };

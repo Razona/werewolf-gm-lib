@@ -19,7 +19,11 @@
     "test:action": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/action/__tests__",
     "test:vote": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/vote/__tests__",
     "test:action:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js src/domain/action/__tests__/ --coverage",
-    "test:victory": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/victory/__tests__"
+    "test:victory": "NODE_OPTIONS=--experimental-vm-modules jest src/domain/victory/__tests__",
+    "test:gameManagerAction": "jest src/service/GameManager/__tests__/GameManagerAction.test.js",
+    "test:gameManager": "jest __tests__/unit/service/GameManager",
+    "test:state": "jest __tests__/unit/service/GameManager/State/*.test.js",
+    "test:state:coverage": "jest --config jest.config.js __tests__/unit/service/GameManager/State/*.test.js --coverage"
   },
   "directories": {
     "doc": "docs",

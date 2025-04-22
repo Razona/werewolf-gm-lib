@@ -4,8 +4,6 @@
  * This file exports the EventSystem class and any related utilities.
  */
 
-const EventSystem = require('./EventSystem');
+import { EventSystem } from './EventSystem';
 
-module.exports = {
-  EventSystem
-};
+export { EventSystem };

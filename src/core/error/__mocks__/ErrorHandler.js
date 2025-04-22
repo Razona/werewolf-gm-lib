@@ -1,33 +1,25 @@
 /**
- * ErrorHandler モックファイル
+ * ErrorHandler モック
  */
 
-// Jestのモック関数を作成
-const mockCreateError = jest.fn((code, message) => new Error(`${code}: ${message}`));
-const mockHandleError = jest.fn();
-
-// モック関数を持つクラス
-class ErrorHandler {
-  constructor() {
-    this.createError = mockCreateError;
-    this.handleError = mockHandleError;
-  }
-}
-
-// テストで参照できるように、モック関数を静的プロパティとして追加
-ErrorHandler.mockCreateError = mockCreateError;
-ErrorHandler.mockHandleError = mockHandleError;
-
-// モックの実装をjest.mock()で直接設定するための関数
-const mockImplementation = jest.fn(() => {
+const ErrorHandler = jest.fn().mockImplementation((eventSystem, options = {}) => {
   return {
-    createError: mockCreateError,
-    handleError: mockHandleError
+    eventSystem,
+    options,
+    createError: jest.fn().mockImplementation((code, message, details) => {
+      const error = new Error(message || `Error: ${code}`);
+      error.code = code;
+      error.details = details;
+      error.isGameError = true;
+      return error;
+    }),
+    handleError: jest.fn().mockImplementation((error, context) => {
+      return { handled: true, error, context };
+    }),
+    validateInput: jest.fn().mockReturnValue(true),
+    standardizeError: jest.fn().mockImplementation(error => error),
+    isGameError: jest.fn().mockImplementation(error => error?.isGameError || false)
   };
 });
 
-// mockImplementation関数を静的メソッドとして追加
-ErrorHandler.mockImplementation = mockImplementation;
-
-// ES6形式のexport
-export { ErrorHandler };
+module.exports = { ErrorHandler };

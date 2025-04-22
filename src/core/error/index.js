@@ -1,3 +1,9 @@
+/**
+ * Error System Module Index
+ * 
+ * This file exports the error handling components.
+ */
+
 import ErrorHandler from './ErrorHandler';
 import ErrorCatalog from './ErrorCatalog';
 import ErrorLevel from './ErrorLevel';
@@ -20,14 +26,6 @@ function createErrorSystem(eventSystem, options = {}) {
 }
 
 export {
-  ErrorHandler,
-  ErrorCatalog,
-  ErrorLevel,
-  Validator,
-  createErrorSystem
-};
-
-export default {
   ErrorHandler,
   ErrorCatalog,
   ErrorLevel,

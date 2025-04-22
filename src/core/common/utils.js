@@ -3,6 +3,91 @@
  */
 
 /**
+ * 標準的な乱数生成器クラス
+ */
+export class Random {
+  /**
+   * 乱数生成器の初期化
+   */
+  constructor() {
+    // 特に初期化処理は不要
+  }
+
+  /**
+   * 0以上1未満の乱数を生成
+   * @returns {number} - 生成された乱数
+   */
+  random() {
+    return Math.random();
+  }
+
+  /**
+   * min以上max未満の整数乱数を生成
+   * @param {number} min - 最小値（以上）
+   * @param {number} max - 最大値（未満）
+   * @returns {number} - 生成された整数乱数
+   */
+  nextInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(this.random() * (max - min)) + min;
+  }
+
+  /**
+   * 配列の要素をランダムに並べ替え
+   * @param {Array} array - 並べ替える配列
+   * @returns {Array} - 並べ替えられた新しい配列
+   */
+  shuffle(array) {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(this.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+}
+
+/**
+ * シード値を使用した決定的な乱数生成器クラス
+ */
+export class SeededRandom extends Random {
+  /**
+   * 乱数生成器の初期化
+   * @param {number} seed - シード値
+   */
+  constructor(seed) {
+    super();
+    this.seed = seed;
+    this.state = seed;
+  }
+
+  /**
+   * シード値に基づいた0以上1未満の乱数を生成
+   * @returns {number} - 生成された乱数
+   */
+  random() {
+    // xorshift128+アルゴリズムの簡易実装
+    let state = this.state;
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    this.state = state;
+    
+    // 0から1の範囲にマッピング
+    return (state % 1000000) / 1000000;
+  }
+
+  /**
+   * シードをリセット
+   * @param {number} [newSeed] - 新しいシード値（省略時は元のシード値を使用）
+   */
+  resetSeed(newSeed) {
+    this.state = newSeed !== undefined ? newSeed : this.seed;
+  }
+}
+
+/**
  * プレイヤーIDの検証
  * @param {*} id - 検証するID
  * @returns {boolean} - 有効なIDであればtrue
@@ -150,6 +235,10 @@ export function eventNameMatches(eventName, pattern) {
 
 // デフォルトエクスポート
 export default {
+  // 乱数生成器
+  Random,
+  SeededRandom,
+  
   // バリデーション
   isValidPlayerId,
   isValidRoleName,

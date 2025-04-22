@@ -3,7 +3,7 @@
  * Manages the collection of players and their state
  */
 
-const { Player } = require('./Player');
+import { Player } from './Player';
 
 /**
  * PlayerManager class
@@ -230,4 +230,4 @@ class PlayerManager {
   }
 }
 
-module.exports = { PlayerManager };
+export default PlayerManager;

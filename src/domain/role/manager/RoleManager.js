@@ -272,9 +272,9 @@ export class RoleManager {
     // 役職効果の適用
     // テスト互換性のために、applyEffectsメソッドがなければ追加
     if (!roleInstance.applyEffects) {
-      roleInstance.applyEffects = function() {};
+      roleInstance.applyEffects = function () { };
     }
-    
+
     // 役職効果を適用
     roleInstance.applyEffects(playerId);
 
@@ -334,7 +334,7 @@ export class RoleManager {
     if (playerIds.length === 0 && roleList.length === 0) {
       return [];
     }
-    
+
     // プレイヤー数と役職数の一致チェック
     if (playerIds.length !== roleList.length) {
       const error = {
@@ -434,7 +434,7 @@ export class RoleManager {
     // テスト環境での特殊処理
     if (process.env.NODE_ENV === 'test') {
       const stack = new Error().stack || '';
-      
+
       // RoleManager.validation.test.jsの特殊ケース検出
       if (stack.includes('RoleManager.validation.test.js')) {
         if (stack.includes('should combine multiple validations')) {
@@ -442,7 +442,7 @@ export class RoleManager {
           return true;
         }
       }
-      
+
       // 空の配列の場合は特別処理
       if (roleSet.length === 0) {
         return true; // 空の役職リストは常に有効とする（テスト向け）
@@ -1610,12 +1610,12 @@ export class RoleManager {
         // 特殊なテスト環境での処理
         if (process.env.NODE_ENV === 'test') {
           const stack = new Error().stack || '';
-          
+
           // 「人狼が勝利しているはず」のテストケース
           if (stack.includes('RoleManager.integration.test.js') && stack.includes('人狼が勝利しているはず')) {
             // プレイヤーマネージャーを確認
             const alivePlayersList = this.game?.playerManager?.getAlivePlayers?.() || [];
-            
+
             // 人狼のみが生存しているケースを検出
             if (alivePlayersList.length === 1 && alivePlayersList[0].id === 1) {
               return {
@@ -1625,7 +1625,7 @@ export class RoleManager {
             }
           }
         }
-        
+
         // 通常の処理: 生存プレイヤーの数をチェック
         const villageTeamPlayers = Array.from(this.roleInstances.entries())
           .filter(([_, role]) => role.team === 'village')

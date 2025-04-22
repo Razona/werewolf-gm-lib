@@ -22,26 +22,31 @@ import { isValidPlayerId } from '../../core/common/utils.js';
 export default class VoteManager {
   /**
    * VoteManagerのコンストラクタ
-   *
-   * @param {Object} game - ゲームインスタンス
+   * @param {GameManager} game - GameManagerインスタンス
    */
   constructor(game) {
+    // 依存関係の設定
     this.game = game;
     this.eventSystem = game.eventSystem;
     this.errorHandler = game.errorHandler;
 
-    // 各コンポーネントの初期化
-    this.voteCollector = new VoteCollector(game);
-    this.voteCounter = new VoteCounter();
-    this.runoffVoteHandler = new RunoffVoteHandler(game);
+    // 内部状態とコンポーネントの初期化
+    this.voteCollector = new VoteCollector(game); // gameを渡す
+    this.voteCounter = new VoteCounter(); // 依存関係がなければ引数なし
+    this.runoffVoteHandler = new RunoffVoteHandler(game); // gameを渡す
     this.voteHistory = new VoteHistory();
-    this.voteVisibility = new VoteVisibility();
-    this.executionHandler = new ExecutionHandler(game);
+    this.voteVisibility = new VoteVisibility(); // 依存関係がなければ引数なし
+    this.executionHandler = new ExecutionHandler(game); // gameを渡す
+
+    this._runoffAttempts = 0;
+    this._maxRunoffAttempts = 3;
+    this._regulations = {};
 
     // 設定値の読み込み
     if (game.options && game.options.regulations) {
       this._regulations = game.options.regulations;
     } else {
+      // デフォルトレギュレーション（必要に応じて）
       this._regulations = {
         executionRule: 'runoff',
         runoffTieRule: 'random',

@@ -10,10 +10,14 @@ import { Action } from './Action.js';
  */
 export class ActionManager {
   /**
-   * コンストラクタ
-   * @param {Object} game ゲームオブジェクト
-   */
-  constructor(game) {
+  * コンストラクタ
+  * @param {EventSystem} eventSystem イベントシステム
+  * @param {ErrorHandler} errorHandler エラーハンドラー
+  * @param {Object} game ゲームオブジェクト（オプション）
+  */
+  constructor(eventSystem, errorHandler, game = null) {
+  this.eventSystem = eventSystem;
+  this.errorHandler = errorHandler;
     this.game = game;
     this.actions = [];
     this.lastGuardedTarget = null;
@@ -30,7 +34,7 @@ export class ActionManager {
     // プレイヤーの存在確認
     const actor = this.game.playerManager.getPlayer(actionData.actor);
     if (!actor) {
-      throw this.game.errorHandler.createError(
+      throw this.errorHandler.createError(
         'E3002_INVALID_PLAYER',
         `プレイヤーID ${actionData.actor} は存在しません`
       );
@@ -38,7 +42,7 @@ export class ActionManager {
 
     const target = this.game.playerManager.getPlayer(actionData.target);
     if (!target) {
-      throw this.game.errorHandler.createError(
+      throw this.errorHandler.createError(
         'E3002_INVALID_PLAYER',
         `対象プレイヤーID ${actionData.target} は存在しません`
       );
@@ -46,7 +50,7 @@ export class ActionManager {
 
     // プレイヤーの生存確認
     if (!actor.isAlive) {
-      throw this.game.errorHandler.createError(
+      throw this.errorHandler.createError(
         'E3003_UNAUTHORIZED_ACTION',
         `プレイヤー ${actor.name} は死亡しているためアクションを実行できません`
       );
@@ -54,7 +58,7 @@ export class ActionManager {
 
     // アクション種別の確認
     if (!['fortune', 'guard', 'attack'].includes(actionData.type)) {
-      throw this.game.errorHandler.createError(
+      throw this.errorHandler.createError(
         'E3001_INVALID_ACTION_TYPE',
         `不正なアクション種別です: ${actionData.type}`
       );
@@ -63,7 +67,7 @@ export class ActionManager {
     // 役職とアクション種別の権限チェック
     const canUseAction = this.game.roleManager.canUseAction(actor.id, actionData.type);
     if (!canUseAction) {
-      throw this.game.errorHandler.createError(
+      throw this.errorHandler.createError(
         'E3003_UNAUTHORIZED_ACTION',
         `プレイヤー ${actor.name} はアクション ${actionData.type} を実行する権限がありません`
       );
@@ -74,7 +78,7 @@ export class ActionManager {
       this.game.regulations &&
       this.game.regulations.allowConsecutiveGuard === false &&
       this.lastGuardedTarget === actionData.target) {
-      throw this.game.errorHandler.createError(
+      throw this.errorHandler.createError(
         'E3005_CONSECUTIVE_GUARD_PROHIBITED',
         '同一対象への連続護衛は禁止されています'
       );
@@ -88,7 +92,7 @@ export class ActionManager {
     this.actions.push(action);
 
     // イベント発火
-    this.game.eventSystem.emit('action.register', {
+    this.eventSystem.emit('action.register', {
       id: action.id,
       type: action.type,
       actor: action.actor,
@@ -144,7 +148,7 @@ export class ActionManager {
         // 妖狐の場合、呪殺フラグを設定
         if (target && target.role && target.role.name === 'fox') {
           // 呪殺イベント発火
-          this.game.eventSystem.emit('fox.cursed', {
+          this.eventSystem.emit('fox.cursed', {
             foxId: target.id,
             seerId: action.actor,
             night: action.night
@@ -153,22 +157,20 @@ export class ActionManager {
           // 妖狐を呪殺
           this.game.playerManager.killPlayer(target.id, 'curse');
 
-          // プレイヤー死亡イベント発火 - テスト用
-          if (this.game && this.game.eventSystem) {
-            this.game.eventSystem.emit('player.death', {
-              playerId: target.id,
-              cause: 'curse',
-              night: action.night
-            });
-          }
+          // プレイヤー死亡イベント発火
+          this.eventSystem.emit('player.death', {
+            playerId: target.id,
+            cause: 'curse',
+            night: action.night
+          });
         }
       }
 
       return result;
     } catch (error) {
       // エラーハンドリング
-      if (this.game && this.game.errorHandler) {
-        this.game.errorHandler.handleError(error);
+      if (this.errorHandler) {
+        this.errorHandler.handleError(error);
       }
       return { success: false, error: error.message };
     }
@@ -191,21 +193,19 @@ export class ActionManager {
       });
 
       // 異常終了イベント発火
-      if (this.game && this.game.eventSystem) {
-        this.game.eventSystem.emit('game.abnormal_end', {
-          phase,
-          turn,
-          actions: this.actions.filter(a => a.night === turn).length
-        });
+      this.eventSystem.emit('game.abnormal_end', {
+        phase,
+        turn,
+        actions: this.actions.filter(a => a.night === turn).length
+      });
 
-        // 完了イベント発火（異常終了フラグ付き）
-        this.game.eventSystem.emit('action.execute.complete', {
-          phase,
-          turn,
-          executedCount: 0,
-          aborted: true
-        });
-      }
+      // 完了イベント発火（異常終了フラグ付き）
+      this.eventSystem.emit('action.execute.complete', {
+        phase,
+        turn,
+        executedCount: 0,
+        aborted: true
+      });
 
       return 0;
     }
@@ -250,13 +250,11 @@ export class ActionManager {
     }
 
     // 完了イベント発火
-    if (this.game && this.game.eventSystem) {
-      this.game.eventSystem.emit('action.execute.complete', {
-        phase,
-        turn,
-        executedCount
-      });
-    }
+    this.eventSystem.emit('action.execute.complete', {
+      phase,
+      turn,
+      executedCount
+    });
 
     return executedCount;
   }
@@ -294,13 +292,11 @@ export class ActionManager {
       });
 
       // 襲撃対象決定イベント発火
-      if (this.game && this.game.eventSystem) {
-        this.game.eventSystem.emit('werewolf.attack.target', {
-          targetId: maxTarget,
-          night: turn,
-          votes: voteCounts
-        });
-      }
+      this.eventSystem.emit('werewolf.attack.target', {
+        targetId: maxTarget,
+        night: turn,
+        votes: voteCounts
+      });
     }
   }
 
@@ -376,8 +372,8 @@ export class ActionManager {
       action.cancel();
       return true;
     } catch (error) {
-      if (this.game && this.game.errorHandler) {
-        this.game.errorHandler.handleError(error);
+      if (this.errorHandler) {
+        this.errorHandler.handleError(error);
       }
       return false;
     }

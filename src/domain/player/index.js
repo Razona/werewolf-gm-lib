@@ -2,10 +2,11 @@
  * Player module exports for werewolf game GM support library
  */
 
-const { Player } = require('./Player');
-const { PlayerManager } = require('./PlayerManager');
+import { Player } from './Player';
+import PlayerManager from './PlayerManager';
 
-module.exports = {
-  Player,
-  PlayerManager
+export {
+  Player
 };
+
+export default PlayerManager;
